@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nero Router</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <p class="eyebrow">ARTIST SUBMISSION ROUTER · NERO MVP</p>
+    <h1>Put the song where the listeners already are.</h1>
+    <p class="lede">Save your track once. Open a Nero reviewer. The companion extension fills the submission form for you.</p>
+  </div>
+  <span class="pill">LOCAL-FIRST · $0</span>
+</header>
+<section class="grid two">
+  <article class="panel">
+    <div class="sectionTitle"><span>01</span><h2>Songs</h2></div>
+    <form id="songForm" class="stack">
+      <div class="row"><input id="artist" placeholder="Artist" required><input id="title" placeholder="Track title" required></div>
+      <input id="email" type="email" placeholder="Submission email" required>
+      <input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required>
+      <textarea id="note" placeholder="Optional reviewer note / question"></textarea>
+      <button>Add song</button>
+    </form>
+    <div id="songs" class="cards"></div>
+  </article>
+  <article class="panel">
+    <div class="sectionTitle"><span>02</span><h2>Nero reviewers</h2></div>
+    <form id="reviewerForm" class="stack">
+      <input id="reviewerName" placeholder="Reviewer name" required>
+      <input id="neroUrl" placeholder="nero.fan/username" required>
+      <button>Add reviewer</button>
+    </form>
+    <div id="reviewers" class="cards"></div>
+  </article>
+</section>
+<section class="panel submissions">
+  <div class="sectionTitle"><span>03</span><h2>Submission log</h2></div>
+  <div class="table"><div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span></div><div id="submissionRows"></div></div>
+</section>
+<footer>Next: automatic Nero discovery + live/open/free filters + queue status.</footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
