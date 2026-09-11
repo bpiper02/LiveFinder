@@ -6,13 +6,15 @@
   let lastActionAt = 0;
   let queueAhead = null;
   let finished = false;
+  let lastState = '';
 
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
   const visible = el => {
     if (!el) return false;
     const style = getComputedStyle(el);
     const rect = el.getBoundingClientRect();
-    return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+    return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
   };
 
   function showBadge(message, kind = 'info') {
@@ -24,7 +26,7 @@
         position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647',
         background: '#111', color: '#fff', padding: '10px 14px', borderRadius: '10px',
         font: '13px/1.35 system-ui, sans-serif', boxShadow: '0 6px 24px rgba(0,0,0,.25)',
-        maxWidth: '360px', border: '1px solid rgba(255,255,255,.16)'
+        maxWidth: '380px', border: '1px solid rgba(255,255,255,.16)'
       });
       document.documentElement.appendChild(badge);
     }
@@ -32,14 +34,42 @@
     badge.style.background = kind === 'error' ? '#5b1717' : kind === 'success' ? '#153d27' : '#111';
   }
 
-  function textFor(el) {
+  function activeModal() {
+    const candidates = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog')].filter(visible);
+    if (candidates.length) {
+      return candidates.sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height))[0];
+    }
+
+    // Nero may not expose dialog semantics. Find the largest visible fixed/absolute panel
+    // containing the workflow's distinctive text.
+    const workflowTerms = ['choose a method below', 'artist name', 'song title', 'ahead of you', 'submit a link'];
+    const fallback = [...document.querySelectorAll('div, section, form')]
+      .filter(visible)
+      .filter(el => {
+        const text = norm(el.innerText);
+        return text.length < 2500 && workflowTerms.some(term => text.includes(term));
+      })
+      .sort((a, b) => {
+        const ar = a.getBoundingClientRect();
+        const br = b.getBoundingClientRect();
+        return (br.width * br.height) - (ar.width * ar.height);
+      });
+
+    return fallback[0] || document.body;
+  }
+
+  function rootText(root = activeModal()) {
+    return norm(root?.innerText || root?.textContent || '');
+  }
+
+  function textFor(el, root = activeModal()) {
     const parts = [el.name, el.id, el.placeholder, el.getAttribute?.('aria-label'), el.getAttribute?.('autocomplete')];
     if (el.id) {
-      const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label) parts.push(label.textContent);
+      const label = root.querySelector?.(`label[for="${CSS.escape(el.id)}"]`) || document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (label && visible(label)) parts.push(label.textContent);
     }
     const wrappingLabel = el.closest?.('label');
-    if (wrappingLabel) parts.push(wrappingLabel.textContent);
+    if (wrappingLabel && visible(wrappingLabel)) parts.push(wrappingLabel.textContent);
     const parentText = el.parentElement?.innerText;
     if (parentText && parentText.length < 220) parts.push(parentText);
     return norm(parts.filter(Boolean).join(' '));
@@ -52,61 +82,57 @@
     descriptor?.set?.call(el, value);
     el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(value) }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
-  function bestField(hints) {
-    const candidates = [...document.querySelectorAll('input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), textarea')]
+  function bestField(hints, root = activeModal()) {
+    const candidates = [...root.querySelectorAll('input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), textarea')]
       .filter(el => visible(el) && !el.disabled);
     return candidates.map(el => {
-      const haystack = textFor(el);
+      const haystack = textFor(el, root);
       const score = hints.reduce((sum, hint) => sum + (haystack.includes(hint) ? hint.length : 0), 0);
       return { el, score };
     }).filter(x => x.score > 0).sort((a, b) => b.score - a.score)[0]?.el || null;
   }
 
-  function clickText(exactText, { tagNames = ['BUTTON', 'A', 'DIV'], reject = [] } = {}) {
-    const wanted = norm(exactText);
-    const candidates = [...document.querySelectorAll(tagNames.map(t => t.toLowerCase()).join(','))]
-      .filter(el => visible(el) && !el.disabled)
-      .filter(el => norm(el.innerText || el.textContent) === wanted)
-      .filter(el => !reject.some(term => norm(el.innerText || el.textContent).includes(norm(term))));
-    const el = candidates[0];
-    if (!el) return false;
-    return guardedClick(el, `text:${wanted}`);
-  }
-
   function guardedClick(el, action) {
     const now = Date.now();
+    if (!el || !visible(el) || el.disabled) return false;
     if (lastAction === action && now - lastActionAt < 1200) return false;
     lastAction = action;
     lastActionAt = now;
+    el.scrollIntoView?.({ block: 'center', inline: 'center' });
     el.click();
     console.log('[LiveFinder] action:', action);
     return true;
   }
 
-  function bodyText() {
-    return norm(document.body?.innerText);
+  function findClickableByText(text, root = activeModal()) {
+    const wanted = norm(text);
+    return [...root.querySelectorAll('button, a, [role="button"], div')]
+      .filter(visible)
+      .find(el => norm(el.innerText || el.textContent) === wanted) || null;
   }
 
   function detectState() {
-    const text = bodyText();
-    if (/choose a method below/.test(text) && /submit a link/.test(text)) return 'METHOD';
-    if (/artist name\s*\*/.test(text) && /song title\s*\*/.test(text) && /email\s*\*/.test(text)) return 'DETAILS';
-    if (/ahead of you/.test(text) && /want to skip ahead/.test(text)) return 'QUEUE';
-    if (/submission received|successfully submitted|added to (the )?queue|you('|’)re in|you are in the queue/.test(text)) return 'COMPLETE';
-    return 'REVIEWER';
+    const root = activeModal();
+    const text = rootText(root);
+
+    // Most specific/later states first in case Nero keeps old step markup mounted.
+    if (/submission received|successfully submitted|added to (the )?queue|you('|’)re in|you are in the queue/.test(text)) return { state: 'COMPLETE', root };
+    if (/ahead of you/.test(text) && /skip/.test(text)) return { state: 'QUEUE', root };
+    if (/artist name/.test(text) && /song title/.test(text) && /email/.test(text)) return { state: 'DETAILS', root };
+    if (/choose a method below/.test(text) && /submit a link/.test(text)) return { state: 'METHOD', root };
+    return { state: 'REVIEWER', root: document.body };
   }
 
-  function findNextButton() {
-    return [...document.querySelectorAll('button')]
+  function findNextButton(root = activeModal()) {
+    return [...root.querySelectorAll('button, [role="button"]')]
       .filter(el => visible(el) && !el.disabled)
       .find(el => norm(el.innerText || el.textContent) === 'next') || null;
   }
 
   function openSubmissionModal() {
-    const candidates = [...document.querySelectorAll('button, a')]
+    const candidates = [...document.querySelectorAll('button, a, [role="button"]')]
       .filter(el => visible(el) && !el.disabled)
       .filter(el => {
         const t = norm(el.innerText || el.textContent);
@@ -120,26 +146,30 @@
     guardedClick(candidates[0], 'open-submit-modal');
   }
 
-  function handleMethod() {
-    showBadge('LiveFinder: choosing link submission…');
+  function handleMethod(root) {
+    showBadge('LiveFinder: link submission…');
 
-    const urlField = bestField(['submit a link', 'song link', 'track link', 'music link', 'url', 'link']);
+    const urlField = bestField(['song link', 'track link', 'music link', 'url', 'link'], root);
     if (!urlField) {
-      clickText('submit a link');
+      const linkChoice = findClickableByText('submit a link', root);
+      if (linkChoice) guardedClick(linkChoice, 'choose-submit-link');
       return;
     }
 
-    if (payload.song?.songUrl && urlField.value !== payload.song.songUrl) {
+    if (payload.song?.songUrl && String(urlField.value || '') !== payload.song.songUrl) {
       setNativeValue(urlField, payload.song.songUrl);
       console.log('[LiveFinder] filled song URL');
       return;
     }
 
-    const next = findNextButton();
-    if (next) guardedClick(next, 'method-next');
+    const next = findNextButton(root);
+    if (next) {
+      showBadge('LiveFinder: song link entered. Moving to details…');
+      guardedClick(next, 'method-next');
+    }
   }
 
-  function handleDetails() {
+  function handleDetails(root) {
     const song = payload.song || {};
     const mappings = [
       { value: song.artist, hints: ['artist name', 'artist'] },
@@ -150,19 +180,26 @@
     ];
 
     let changed = false;
+    const knownFields = new Set();
+
     for (const mapping of mappings) {
       if (!mapping.value) continue;
-      const el = bestField(mapping.hints);
-      if (el && el.value !== mapping.value) {
+      const el = bestField(mapping.hints, root);
+      if (!el) continue;
+      knownFields.add(el);
+      if (String(el.value || '') !== String(mapping.value)) {
         setNativeValue(el, mapping.value);
         changed = true;
       }
     }
 
-    const termsCheckbox = [...document.querySelectorAll('input[type="checkbox"]')]
-      .find(el => visible(el) && /terms|conditions|accept/.test(textFor(el)));
+    const checkboxes = [...root.querySelectorAll('input[type="checkbox"]')].filter(visible);
+    let termsCheckbox = checkboxes.find(el => /terms|conditions|accept/.test(textFor(el, root)));
+    if (!termsCheckbox && checkboxes.length === 1) termsCheckbox = checkboxes[0];
+
     if (termsCheckbox && !termsCheckbox.checked) {
       termsCheckbox.click();
+      termsCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
       changed = true;
       console.log('[LiveFinder] accepted terms');
     }
@@ -172,8 +209,7 @@
       return;
     }
 
-    const knownFields = new Set(mappings.map(m => bestField(m.hints)).filter(Boolean));
-    const unknownRequired = [...document.querySelectorAll('input[required], textarea[required]')]
+    const unknownRequired = [...root.querySelectorAll('input[required], textarea[required]')]
       .filter(el => visible(el) && !el.disabled && el.type !== 'checkbox' && !knownFields.has(el) && !String(el.value || '').trim());
 
     if (unknownRequired.length) {
@@ -181,15 +217,18 @@
       return;
     }
 
-    const next = findNextButton();
+    const next = findNextButton(root);
     if (next) {
       showBadge('LiveFinder: details complete. Moving to queue…');
       guardedClick(next, 'details-next');
+    } else {
+      showBadge('LiveFinder filled the details, but Nero has not enabled Next yet.', 'error');
     }
   }
 
-  async function handleQueue() {
-    const match = document.body?.innerText.match(/([\d,]+)\s+ahead of you/i);
+  async function handleQueue(root) {
+    const raw = root.innerText || root.textContent || '';
+    const match = raw.match(/([\d,]+)\s+ahead of you/i);
     if (match) queueAhead = Number(match[1].replace(/,/g, ''));
 
     await chrome.storage.local.set({
@@ -201,11 +240,11 @@
       }
     });
 
-    showBadge(`LiveFinder: ${queueAhead ?? '?'} ahead. Staying on the free path — no skips selected.`);
+    showBadge(`LiveFinder: ${queueAhead ?? '?'} ahead. Free queue selected; no paid skip.`);
 
-    const next = findNextButton();
-    if (!next) return;
-    guardedClick(next, 'queue-free-next');
+    // Only the footer Next is allowed. Never click SKIP/SUPER SKIP/THRONE.
+    const next = findNextButton(root);
+    if (next) guardedClick(next, 'queue-free-next');
   }
 
   async function handleComplete() {
@@ -240,16 +279,19 @@
   async function tick() {
     if (!payload || finished) return;
     try {
-      const state = detectState();
-      console.debug('[LiveFinder] state:', state);
+      const { state, root } = detectState();
+      if (state !== lastState) {
+        console.log('[LiveFinder] state:', state);
+        lastState = state;
+      }
       if (state === 'REVIEWER') openSubmissionModal();
-      if (state === 'METHOD') handleMethod();
-      if (state === 'DETAILS') handleDetails();
-      if (state === 'QUEUE') await handleQueue();
-      if (state === 'COMPLETE') await handleComplete();
+      else if (state === 'METHOD') handleMethod(root);
+      else if (state === 'DETAILS') handleDetails(root);
+      else if (state === 'QUEUE') await handleQueue(root);
+      else if (state === 'COMPLETE') await handleComplete();
     } catch (err) {
       console.error('[LiveFinder] automation error', err);
-      showBadge('LiveFinder hit an unexpected Nero state. Automation paused; check the console.', 'error');
+      showBadge('LiveFinder hit an unexpected Nero state. Check the console.', 'error');
     }
   }
 
@@ -261,7 +303,7 @@
       return;
     }
     showBadge('LiveFinder connected. Starting Nero submission…');
-    setInterval(tick, 650);
+    setInterval(tick, 500);
     tick();
   }
 
