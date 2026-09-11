@@ -76,6 +76,19 @@
     }
   }
 
+  async function relay(message, runtimeMessage, successType, fallback = {}) {
+    try {
+      const response = await sendRuntime(runtimeMessage);
+      window.postMessage({ source: EXT_SOURCE, type: successType, ...fallback, response }, '*');
+    } catch (err) {
+      if (isStaleContextError(err)) {
+        recoverFromStaleContext();
+        return;
+      }
+      window.postMessage({ source: EXT_SOURCE, type: `${successType}_FAILED`, error: String(err?.message || err), requestType: message.type }, '*');
+    }
+  }
+
   window.addEventListener('message', async event => {
     if (event.source !== window) return;
     const message = event.data;
@@ -122,6 +135,26 @@
         }
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_POOL_FAILED', error: String(err?.message || err) }, '*');
       }
+      return;
+    }
+
+    if (message.type === 'REQUEST_QUEUE_WATCH_STATE') {
+      await relay(message, { type: 'GET_QUEUE_WATCH_STATE' }, 'QUEUE_WATCH_STATE');
+      return;
+    }
+
+    if (message.type === 'SET_QUEUE_ALERTS') {
+      await relay(message, { type: 'SET_QUEUE_ALERTS', enabled: !!message.enabled }, 'QUEUE_ALERTS_UPDATED');
+      return;
+    }
+
+    if (message.type === 'TEST_QUEUE_NOTIFICATION') {
+      await relay(message, { type: 'TEST_QUEUE_NOTIFICATION' }, 'QUEUE_ALERT_TESTED');
+      return;
+    }
+
+    if (message.type === 'SCAN_OPEN_NERO_TABS') {
+      await relay(message, { type: 'SCAN_OPEN_NERO_TABS' }, 'QUEUE_SCAN_COMPLETE');
       return;
     }
 
