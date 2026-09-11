@@ -1,6 +1,12 @@
 (() => {
-  const RESERVED = new Set(['discover','learn','docs','home','login','signup','terms','privacy','support','pricing','about','create']);
+  const RESERVED = new Set([
+    'discover','learn','docs','home','login','signup','terms','privacy','support','pricing','about','create',
+    'careers','career','jobs','games','game','partner-program','partners','partner','company','product','products',
+    'features','feature','faq','contact','blog','press','legal','cookies','settings','account','profile','dashboard',
+    'creators','artists','teams','business','enterprise','community','help','download','app','api','status'
+  ]);
   const SUFFIXES = new Set(['live','submit','submission','review']);
+  const NON_CREATOR_WORDS = /\b(company|careers?|jobs?|product|games?|partner program|partners?|pricing|privacy|terms|support|docs?|learn|about|contact|features?|faq|blog|press|legal|cookies?)\b/i;
 
   const norm = value => String(value || '').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
   const visible = el => {
@@ -14,11 +20,21 @@
     try {
       const url = new URL(href, location.origin);
       if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return null;
-      const parts = url.pathname.split('/').filter(Boolean);
-      if (!parts.length || RESERVED.has(parts[0].toLowerCase())) return null;
-      const handle = decodeURIComponent(parts[0]);
-      if (!handle || handle.length > 80) return null;
-      const livePath = parts.some(p => p.toLowerCase() === 'live');
+
+      const parts = url.pathname.split('/').filter(Boolean).map(p => decodeURIComponent(p));
+      if (!parts.length) return null;
+
+      const first = parts[0].toLowerCase();
+      if (RESERVED.has(first)) return null;
+      if (!/^[a-z0-9._-]{2,80}$/i.test(parts[0])) return null;
+
+      // Creator/session URLs are either /handle or /handle/<known session suffix>.
+      // Reject deeper generic site routes so nav/footer links never enter the pool.
+      if (parts.length > 2) return null;
+      if (parts.length === 2 && !SUFFIXES.has(parts[1].toLowerCase())) return null;
+
+      const handle = parts[0];
+      const livePath = parts[1]?.toLowerCase() === 'live';
       return {
         handle,
         profileUrl: `https://www.nero.fan/${encodeURIComponent(handle)}`,
@@ -42,12 +58,31 @@
     return anchor;
   }
 
+  function cardLooksLikeCreator(card, handle) {
+    const text = String(card.innerText || card.textContent || '').trim();
+    if (!text) return false;
+    if (NON_CREATOR_WORDS.test(text) && !/\blive\b|submit|queue|review|song|music/i.test(text)) return false;
+
+    const hrefs = [...card.querySelectorAll('a[href]')].map(a => a.getAttribute('href') || '');
+    const hasOwnLink = hrefs.some(href => {
+      try {
+        const u = new URL(href, location.origin);
+        const p = u.pathname.split('/').filter(Boolean).map(x => decodeURIComponent(x));
+        return p[0]?.toLowerCase() === handle.toLowerCase();
+      } catch {
+        return false;
+      }
+    });
+
+    return hasOwnLink;
+  }
+
   function extractDisplayName(card, handle) {
     const candidates = [...card.querySelectorAll('h1,h2,h3,h4,strong,b,[class*="name" i]')]
       .filter(visible)
       .map(el => String(el.innerText || el.textContent || '').trim())
       .filter(Boolean)
-      .filter(text => text.length <= 100 && !/live|submit|queue|review/i.test(text));
+      .filter(text => text.length <= 100 && !/live|submit|queue|review/i.test(text) && !NON_CREATOR_WORDS.test(text));
     return candidates[0] || `@${handle}`;
   }
 
@@ -68,7 +103,10 @@
     for (const anchor of [...document.querySelectorAll('a[href]')].filter(visible)) {
       const parsed = parseReviewerHref(anchor.href);
       if (!parsed) continue;
+
       const card = nearestCard(anchor);
+      if (!cardLooksLikeCreator(card, parsed.handle)) continue;
+
       const text = String(card.innerText || card.textContent || '');
       const classified = classify(text, parsed.livePath);
       const existing = found.get(parsed.handle.toLowerCase());
@@ -84,6 +122,7 @@
       };
       if (!existing || rank[item.status] > rank[existing.status]) found.set(parsed.handle.toLowerCase(), item);
     }
+
     return [...found.values()].sort((a, b) => {
       const rank = { live: 0, open: 1, unknown: 2, closed: 3 };
       return rank[a.status] - rank[b.status] || a.handle.localeCompare(b.handle);
@@ -95,8 +134,9 @@
   async function scanAndSave() {
     const items = scrape();
     const signature = JSON.stringify(items.map(x => [x.handle, x.status, x.neroUrl]));
-    if (!items.length || signature === lastSignature) return;
+    if (signature === lastSignature) return;
     lastSignature = signature;
+
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SAVE_NERO_POOL', items, scrapedAt: Date.now() });
       if (response?.ok) {
@@ -115,6 +155,6 @@
   setTimeout(() => {
     clearInterval(timer);
     observer.disconnect();
-    if (!saves) console.warn('[LiveFinder] Discover scan found no reviewer links.');
+    if (!saves) console.warn('[LiveFinder] Discover scan produced no pool update.');
   }, 15000);
 })();
