@@ -2,7 +2,13 @@
   const STORAGE_KEY = 'nero-router-state-v1';
   const WEB_SOURCE = 'livefinder-web';
   const EXT_SOURCE = 'livefinder-extension';
-  let handled = false;
+  const STATUS_RANK = {
+    unknown: 0,
+    'automation started': 1,
+    queued: 2,
+    submitted: 3
+  };
+  let reloadScheduled = false;
 
   function readState() {
     try {
@@ -16,6 +22,10 @@
     }
   }
 
+  function rank(status) {
+    return STATUS_RANK[String(status || 'unknown').toLowerCase()] ?? 0;
+  }
+
   function mergeRuns(runs) {
     const state = readState();
     let changed = false;
@@ -24,13 +34,15 @@
       if (!run?.id || !run?.reviewerUrl) continue;
       const existing = state.submissions.find(item => item.id === run.id);
       const next = {
-        id: run.id,
+        id: String(run.id),
         reviewerUrl: String(run.reviewerUrl || ''),
         reviewer: String(run.reviewer || ''),
         songId: String(run.songId || ''),
         song: String(run.song || ''),
         status: String(run.status || 'automation started'),
-        queueAhead: Number.isFinite(run.queueAhead) ? run.queueAhead : null,
+        queueAhead: Number.isFinite(run.queueAhead) ? Number(run.queueAhead) : null,
+        streamUrl: String(run.streamUrl || ''),
+        sessionId: String(run.sessionId || ''),
         createdAt: new Date(Number(run.createdAtMs || Date.now())).toLocaleString(),
         createdAtMs: Number(run.createdAtMs || Date.now())
       };
@@ -41,16 +53,25 @@
         continue;
       }
 
-      for (const key of ['reviewerUrl','reviewer','songId','song','status','queueAhead']) {
-        if (existing[key] !== next[key]) {
+      for (const key of ['reviewerUrl', 'reviewer', 'songId', 'song', 'streamUrl', 'sessionId']) {
+        if (next[key] && existing[key] !== next[key]) {
           existing[key] = next[key];
           changed = true;
         }
       }
+
+      if (rank(next.status) > rank(existing.status)) {
+        existing.status = next.status;
+        changed = true;
+      }
+      if (Number.isFinite(next.queueAhead) && existing.queueAhead !== next.queueAhead) {
+        existing.queueAhead = next.queueAhead;
+        changed = true;
+      }
     }
 
     if (changed) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    return changed;
+    return { changed, state };
   }
 
   function requestRuns() {
@@ -68,20 +89,23 @@
       const runs = Array.isArray(message.response?.runs) ? message.response.runs : [];
       if (!runs.length) return;
 
-      const changed = mergeRuns(runs);
-      const importedIds = runs.map(run => run?.id).filter(Boolean);
-      if (importedIds.length) {
-        window.postMessage({ source: WEB_SOURCE, type: 'ACK_DASHBOARD_RUNS', ids: importedIds }, '*');
+      const { changed, state } = mergeRuns(runs);
+      const terminalIds = runs
+        .map(run => state.submissions.find(item => item.id === run?.id))
+        .filter(item => item?.status === 'submitted')
+        .map(item => item.id);
+
+      if (terminalIds.length) {
+        window.postMessage({ source: WEB_SOURCE, type: 'ACK_DASHBOARD_RUNS', ids: terminalIds }, '*');
       }
 
-      if (changed && !handled) {
-        handled = true;
+      if (changed && !reloadScheduled) {
+        reloadScheduled = true;
         setTimeout(() => location.reload(), 80);
       }
     }
   });
 
   requestRuns();
-  const timer = setInterval(requestRuns, 2000);
-  setTimeout(() => clearInterval(timer), 12000);
+  setInterval(requestRuns, 2000);
 })();
