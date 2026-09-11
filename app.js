@@ -4,7 +4,7 @@ state.songs ||= []; state.reviewers ||= []; state.submissions ||= [];
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 
 function render(){
   $('songs').innerHTML=state.songs.length?state.songs.map(s=>`<div class="card"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div>`).join(''):'<p class="empty">No songs saved yet.</p>';
