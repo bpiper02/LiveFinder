@@ -29,6 +29,11 @@
     window.postMessage({ source: SOURCE, type: 'SYNC_SONG_LIBRARY', songs, syncedAt: Date.now() }, '*');
   }
 
+  window.addEventListener('message', event => {
+    if (event.source !== window) return;
+    const message = event.data;
+    if (message?.source === 'livefinder-extension' && message.type === 'BRIDGE_READY') sync(true);
+  });
   window.addEventListener('storage', event => {
     if (event.key === STORAGE_KEY) sync(true);
   });
