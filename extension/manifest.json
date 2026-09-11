@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Discover Nero reviewers, automate free submissions, and alert artists as queues move.",
   "permissions": [
     "alarms",
@@ -30,7 +30,7 @@
     },
     {
       "matches": ["https://www.nero.fan/discover*", "https://nero.fan/discover*"],
-      "js": ["discover.js"],
+      "js": ["url-utils.js", "discover.js"],
       "run_at": "document_idle"
     }
   ]
