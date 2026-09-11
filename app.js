@@ -37,10 +37,11 @@ function reviewerLabel(url){
 }
 
 function migrateState(){
+  const badLegacyLabels=new Set(['@live','@submit','@submission','@review']);
   state.reviewers=state.reviewers.map(r=>({
     id:r.id||uid(),
     neroUrl:r.neroUrl,
-    label:r.label||r.name||reviewerLabel(r.neroUrl)
+    label:(!r.label||badLegacyLabels.has(String(r.label).toLowerCase()))?reviewerLabel(r.neroUrl):(r.label||r.name)
   })).filter(r=>r.neroUrl);
 
   state.submissions=state.submissions.map(s=>({
