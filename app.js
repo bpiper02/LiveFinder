@@ -8,6 +8,9 @@ const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+let bridgeReady=false;
+let bridgeVersion='';
+let staleReloadScheduled=false;
 
 function normalizeNeroUrl(input){
   let url=String(input||'').trim();
@@ -143,6 +146,12 @@ function submitToReviewer(reviewerId,songId){
   const song=state.songs.find(s=>s.id===songId);
   if(!reviewer||!song)return;
 
+  if(!bridgeReady){
+    alert('LiveFinder extension is not connected yet. Refresh this page after reloading the extension, then try again.');
+    window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');
+    return;
+  }
+
   const runId=uid();
   const payload={source:'livefinder',type:'PREPARE_NERO_SUBMISSION',runId,song,reviewer,createdAt:Date.now()};
   const base=reviewer.neroUrl.split('#')[0];
@@ -225,10 +234,36 @@ window.addEventListener('message',event=>{
   if(event.source!==window)return;
   const msg=event.data;
   if(msg?.source!=='livefinder-extension')return;
+
+  if(msg.type==='BRIDGE_READY'){
+    bridgeReady=true;
+    bridgeVersion=msg.version||'';
+    sessionStorage.removeItem('livefinder-stale-reload');
+    console.log(`[LiveFinder] extension connected${bridgeVersion?` v${bridgeVersion}`:''}`);
+    return;
+  }
+
+  if(msg.type==='EXTENSION_CONTEXT_STALE'){
+    bridgeReady=false;
+    if(staleReloadScheduled)return;
+    staleReloadScheduled=true;
+    const alreadyRetried=sessionStorage.getItem('livefinder-stale-reload')==='1';
+    if(alreadyRetried){
+      alert('The LiveFinder extension was updated, but this tab still has a stale extension context. Refresh this page once.');
+      return;
+    }
+    sessionStorage.setItem('livefinder-stale-reload','1');
+    console.info('[LiveFinder] extension updated; refreshing dashboard to reconnect…');
+    setTimeout(()=>location.reload(),150);
+    return;
+  }
+
   if(msg.type==='NERO_STATUS')reconcileStatus(msg.queue,msg.result);
 });
 
-setInterval(()=>window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_STATUS'},'*'),1500);
+setInterval(()=>{
+  if(bridgeReady)window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_STATUS'},'*');
+},1500);
 window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');
 
 migrateState();
