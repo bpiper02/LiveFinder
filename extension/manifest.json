@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Discover Nero reviewers, automate free submissions, and alert artists as queues move.",
   "permissions": [
     "alarms",
