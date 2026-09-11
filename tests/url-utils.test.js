@@ -25,6 +25,11 @@ const bad = [
   'https://www.nero.fan/partner-program',
   'https://www.nero.fan/_next/static/chunk.js',
   'https://www.nero.fan/assets/logo.svg',
+  'https://www.nero.fan/fonts',
+  'https://www.nero.fan/share.png',
+  'https://www.nero.fan/neronowordblack.png',
+  'https://www.nero.fan/nerowithborder.png',
+  'https://www.nero.fan/favicon.ico',
   'https://example.com/vivacjaudio/live',
   'https://www.nero.fan/a/live'
 ];
