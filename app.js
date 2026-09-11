@@ -14,6 +14,8 @@ let staleReloadScheduled=false;
 let discoveredPool=[];
 let poolScrapedAt=0;
 let scanStartedAt=0;
+let queueWatches=[];
+let queueAlertsEnabled=true;
 
 function normalizeNeroUrl(input){
   let url=String(input||'').trim();
@@ -25,6 +27,10 @@ function normalizeNeroUrl(input){
   parsed.search='';
   parsed.pathname=parsed.pathname.replace(/\/+$/,'')||'/';
   return parsed.toString();
+}
+
+function reviewerKey(url){
+  try{return decodeURIComponent(new URL(normalizeNeroUrl(url)).pathname.split('/').filter(Boolean)[0]||'').toLowerCase();}catch{return '';}
 }
 
 function reviewerLabel(url){
@@ -71,10 +77,25 @@ function migrateState(){
   save();
 }
 
+function watchForSubmission(s){
+  const key=reviewerKey(s.reviewerUrl);
+  return queueWatches.find(w=>w.reviewerKey===key&&(!w.songId||!s.songId||w.songId===s.songId))||null;
+}
+
 function statusText(s){
-  if(s.status==='submitted')return s.queueAhead!=null?`submitted · ${s.queueAhead} ahead`:'submitted';
-  if(s.status==='queued')return s.queueAhead!=null?`queued · ${s.queueAhead} ahead`:'queued';
+  const watch=watchForSubmission(s);
+  const ahead=Number.isFinite(watch?.latestAhead)?watch.latestAhead:s.queueAhead;
+  if(s.status==='submitted')return ahead!=null?`submitted · ${ahead} ahead`:'submitted';
+  if(s.status==='queued')return ahead!=null?`queued · ${ahead} ahead`:'queued';
   return s.status||'unknown';
+}
+
+function renderQueueControls(){
+  if(!$('queueAlertStatus'))return;
+  const active=queueWatches.filter(w=>w.enabled!==false).length;
+  $('queueAlertStatus').textContent=queueAlertsEnabled?`${active} watched queue${active===1?'':'s'} · alerts active`:`${active} watched queue${active===1?'':'s'} · alerts paused`;
+  $('toggleQueueAlerts').textContent=queueAlertsEnabled?'Alerts on':'Alerts off';
+  $('toggleQueueAlerts').classList.toggle('muted',!queueAlertsEnabled);
 }
 
 function poolCard(item){
@@ -108,12 +129,15 @@ function render(){
     const label=canonicalReviewerLabel(s.reviewerUrl,s.reviewer);
     const href=(()=>{try{return normalizeNeroUrl(s.reviewerUrl);}catch{return ''}})();
     const reviewerCell=href?`<a class="historyReviewer" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(href)}</small></a>`:`<span>${esc(label)}</span>`;
-    return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="status">${esc(statusText(s))}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${s.id}">Delete</button></span></div>`;
+    const watch=watchForSubmission(s);
+    const watched=watch?`<small class="watchState">${watch.enabled===false?'watch paused':'watching'}${Number.isFinite(watch.latestAhead)?` · ${watch.latestAhead} ahead`:''}</small>`:'';
+    return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="statusCell"><span class="status">${esc(statusText(s))}</span>${watched}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${s.id}">Delete</button></span></div>`;
   }).join(''):'<p class="empty">Nothing submitted yet.</p>';
 
   document.querySelectorAll('select[data-reviewer]').forEach(el=>el.onchange=()=>submitToReviewer(el.dataset.reviewer,el.value));
   document.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>handleAction(btn.dataset.action,btn.dataset.id));
   renderPool();
+  renderQueueControls();
 }
 
 function handleAction(action,id){
@@ -156,6 +180,21 @@ $('refreshPool').onclick=()=>{
   $('poolStatus').textContent='Scanning Nero Discover…';
   const tab=window.open(`https://www.nero.fan/discover?livefinder=scan&t=${scanStartedAt}`,'_blank');
   if(!tab)alert('Chrome blocked the Nero Discover tab. Allow popups for localhost and try again.');
+};
+
+$('toggleQueueAlerts').onclick=()=>{
+  if(!bridgeReady)return alert('LiveFinder extension is not connected.');
+  window.postMessage({source:'livefinder-web',type:'SET_QUEUE_ALERTS',enabled:!queueAlertsEnabled},'*');
+};
+$('testQueueAlert').onclick=()=>{
+  if(!bridgeReady)return alert('LiveFinder extension is not connected.');
+  $('testQueueAlert').textContent='Sending…';
+  window.postMessage({source:'livefinder-web',type:'TEST_QUEUE_NOTIFICATION'},'*');
+};
+$('scanQueuesNow').onclick=()=>{
+  if(!bridgeReady)return alert('LiveFinder extension is not connected.');
+  $('scanQueuesNow').textContent='Checking…';
+  window.postMessage({source:'livefinder-web',type:'SCAN_OPEN_NERO_TABS'},'*');
 };
 
 function submitPoolReviewer(url,label,songId){
@@ -213,13 +252,28 @@ function reconcileStatus(queue,result){
   if(changed){save();render();}
 }
 
+function applyWatchState(response){
+  if(!response?.ok)return;
+  queueAlertsEnabled=response.alertsEnabled!==false;
+  queueWatches=Array.isArray(response.watches)?response.watches:[];
+  let changed=false;
+  for(const s of state.submissions){
+    const watch=watchForSubmission(s);
+    if(watch&&Number.isFinite(watch.latestAhead)&&s.queueAhead!==watch.latestAhead){s.queueAhead=watch.latestAhead;changed=true;}
+  }
+  if(changed)save();
+  render();
+}
+
 window.addEventListener('message',event=>{
   if(event.source!==window)return;
   const msg=event.data;
   if(msg?.source!=='livefinder-extension')return;
 
   if(msg.type==='BRIDGE_READY'){
-    bridgeReady=true;bridgeVersion=msg.version||'';sessionStorage.removeItem('livefinder-stale-reload');console.log(`[LiveFinder] extension connected${bridgeVersion?` v${bridgeVersion}`:''}`);return;
+    bridgeReady=true;bridgeVersion=msg.version||'';sessionStorage.removeItem('livefinder-stale-reload');console.log(`[LiveFinder] extension connected${bridgeVersion?` v${bridgeVersion}`:''}`);
+    window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
+    return;
   }
 
   if(msg.type==='EXTENSION_CONTEXT_STALE'){
@@ -241,12 +295,28 @@ window.addEventListener('message',event=>{
     renderPool();
     if(scanStartedAt&&poolScrapedAt>=scanStartedAt)$('poolStatus').textContent=`Scan complete · ${discoveredPool.length} found`;
   }
+  if(msg.type==='QUEUE_WATCH_STATE')applyWatchState(msg.response);
+  if(msg.type==='QUEUE_ALERTS_UPDATED'){
+    if(msg.response?.ok){queueAlertsEnabled=msg.response.alertsEnabled!==false;renderQueueControls();}
+  }
+  if(msg.type==='QUEUE_ALERT_TESTED'){
+    $('testQueueAlert').textContent=msg.response?.ok?'Sent ✓':'Test alert';
+    setTimeout(()=>$('testQueueAlert').textContent='Test alert',1600);
+  }
+  if(msg.type==='QUEUE_SCAN_COMPLETE'){
+    $('scanQueuesNow').textContent='Checked ✓';
+    window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
+    setTimeout(()=>$('scanQueuesNow').textContent='Check open Nero tabs',1600);
+  }
 });
 
+let pollTick=0;
 setInterval(()=>{
   if(!bridgeReady)return;
   window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_STATUS'},'*');
   window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_POOL'},'*');
+  pollTick+=1;
+  if(pollTick%3===0)window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
 },1500);
 window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');
 
