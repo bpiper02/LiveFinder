@@ -53,41 +53,37 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
         return;
       }
-
       if (message.type === 'STORE_NERO_SUBMISSION') {
         const payload = message.payload;
-        if (!payload || payload.source !== 'livefinder' || payload.type !== 'PREPARE_NERO_SUBMISSION') {
-          throw new Error('Invalid LiveFinder submission payload');
-        }
+        if (!payload || payload.source !== 'livefinder' || payload.type !== 'PREPARE_NERO_SUBMISSION') throw new Error('Invalid LiveFinder submission payload');
         await put('pendingRun', { payload, storedAt: Date.now() });
         sendResponse({ ok: true });
         return;
       }
-
       if (message.type === 'GET_NERO_SUBMISSION') {
-        const record = await get('pendingRun');
-        sendResponse({ ok: true, record: record || null });
+        sendResponse({ ok: true, record: (await get('pendingRun')) || null });
         return;
       }
-
       if (message.type === 'CLEAR_NERO_SUBMISSION') {
         await remove('pendingRun');
         sendResponse({ ok: true });
         return;
       }
-
       if (message.type === 'SAVE_NERO_QUEUE') {
         await put('lastQueue', message.value);
         sendResponse({ ok: true });
         return;
       }
-
       if (message.type === 'SAVE_NERO_RESULT') {
         await put('lastResult', message.value);
         sendResponse({ ok: true });
         return;
       }
-
+      if (message.type === 'GET_NERO_STATUS') {
+        const [queue, result] = await Promise.all([get('lastQueue'), get('lastResult')]);
+        sendResponse({ ok: true, queue: queue || null, result: result || null });
+        return;
+      }
       sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
     } catch (err) {
       console.error('[LiveFinder background]', err);
