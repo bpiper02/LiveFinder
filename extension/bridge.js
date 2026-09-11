@@ -40,9 +40,7 @@
   async function announceReady() {
     try {
       const response = await sendRuntime({ type: 'PING' });
-      if (response?.ok) {
-        window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
-      }
+      if (response?.ok) window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
     } catch (err) {
       console.warn('[LiveFinder] bridge not ready', err);
     }
@@ -51,16 +49,31 @@
   window.addEventListener('message', async event => {
     if (event.source !== window) return;
     const message = event.data;
-    if (!message || message.source !== WEB_SOURCE || message.type !== 'STORE_NERO_SUBMISSION') return;
+    if (!message || message.source !== WEB_SOURCE) return;
 
-    try {
-      const response = await sendRuntime({ type: 'STORE_NERO_SUBMISSION', payload: message.payload });
-      if (!response?.ok) throw new Error(response?.error || 'Background rejected submission');
-      window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORED' }, '*');
-    } catch (err) {
-      console.error('[LiveFinder] Could not store pending Nero submission', err);
-      window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORE_FAILED', error: String(err?.message || err) }, '*');
+    if (message.type === 'STORE_NERO_SUBMISSION') {
+      try {
+        const response = await sendRuntime({ type: 'STORE_NERO_SUBMISSION', payload: message.payload });
+        if (!response?.ok) throw new Error(response?.error || 'Background rejected submission');
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORED' }, '*');
+      } catch (err) {
+        console.error('[LiveFinder] Could not store pending Nero submission', err);
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORE_FAILED', error: String(err?.message || err) }, '*');
+      }
+      return;
     }
+
+    if (message.type === 'REQUEST_NERO_STATUS') {
+      try {
+        const response = await sendRuntime({ type: 'GET_NERO_STATUS' });
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS', queue: response?.queue || null, result: response?.result || null }, '*');
+      } catch (err) {
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS_FAILED', error: String(err?.message || err) }, '*');
+      }
+      return;
+    }
+
+    if (message.type === 'PING_BRIDGE') announceReady();
   });
 
   announceReady();
