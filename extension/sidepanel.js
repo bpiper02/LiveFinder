@@ -14,7 +14,7 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'
     }[char]));
   }
 
@@ -185,6 +185,7 @@
     };
     const payload = {
       source: 'livefinder',
+      origin: 'sidepanel',
       type: 'PREPARE_NERO_SUBMISSION',
       runId: crypto.randomUUID(),
       song,
