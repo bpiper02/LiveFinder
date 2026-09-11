@@ -13,32 +13,108 @@
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   };
 
-  function nearestCard(element) {
-    let el = element;
-    for (let i = 0; i < 7 && el?.parentElement; i += 1) {
-      const parent = el.parentElement;
-      const text = norm(parent.innerText || parent.textContent);
-      if (text.length >= 8 && text.length <= 1800) return parent;
-      el = parent;
+  function looksLikeSessionCard(el) {
+    if (!el) return false;
+    const text = norm(el.innerText || el.textContent || '');
+    if (!text || text.length < 8 || text.length > 2200) return false;
+    const hasLive = /(^|\s)live($|\s)/.test(text);
+    const hasSubmissions = /\b\d[\d,]*\s+submissions?\b/.test(text);
+    const hasQueueLanguage = /submit|queue|review|music|song/.test(text);
+    return (hasLive && hasQueueLanguage) || hasSubmissions;
+  }
+
+  function nearestSessionCard(seed) {
+    let el = seed;
+    for (let i = 0; i < 9 && el; i += 1, el = el.parentElement) {
+      if (looksLikeSessionCard(el)) return el;
     }
-    return element;
+    return null;
+  }
+
+  function sessionCards() {
+    const cards = new Set();
+    const seeds = [...document.querySelectorAll('div,article,section,li,a,button')]
+      .filter(visible)
+      .filter(el => {
+        const text = norm(el.innerText || el.textContent || '');
+        return /(^|\s)live($|\s)/.test(text) || /\b\d[\d,]*\s+submissions?\b/.test(text);
+      });
+
+    for (const seed of seeds) {
+      const card = nearestSessionCard(seed);
+      if (card) cards.add(card);
+    }
+
+    // Remove broad containers that merely wrap several real cards.
+    return [...cards].filter(card => {
+      const nested = [...cards].filter(other => other !== card && card.contains(other));
+      return nested.length === 0;
+    });
+  }
+
+  function routeCandidates(card) {
+    const out = [];
+    const seen = new Set();
+    const push = (raw, source, el = card) => {
+      const value = String(raw || '').trim();
+      if (!value) return;
+      const key = `${source}:${value}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const parsed = parseReviewerUrl(value, location.origin);
+      if (!parsed) return;
+      out.push({ parsed, source, el });
+    };
+
+    const attrs = ['href', 'data-href', 'data-url', 'data-to', 'to'];
+    const scoped = [card, ...card.querySelectorAll('*')];
+    for (const el of scoped) {
+      for (const attr of attrs) {
+        const raw = attr === 'href' && el.href ? el.href : el.getAttribute?.(attr);
+        if (raw) push(raw, attr, el);
+      }
+    }
+
+    // Some React components keep the navigation target only in serialized props.
+    // Restrict fallback parsing to THIS session card, never the whole document.
+    const html = card.outerHTML || '';
+    const absolute = html.match(/https?:\\?\/\\?\/(?:www\\?\.)?nero\\?\.fan\\?\/[^"'<>\\\s]+/gi) || [];
+    for (const raw of absolute) push(raw.replace(/\\\//g, '/').replace(/\\u002F/gi, '/'), 'card-html-absolute');
+
+    const relative = html.match(/(?:href|to|url|pathname)[^"']{0,30}["'](\\?\/[a-z0-9@._-]{2,100}(?:\\?\/[^"'<>\\\s]*)?)["']/gi) || [];
+    for (const match of relative) {
+      const path = match.match(/["'](\\?\/[^"']+)["']/)?.[1];
+      if (path) push(path.replace(/\\\//g, '/').replace(/\\u002F/gi, '/'), 'card-html-route');
+    }
+
+    return out;
+  }
+
+  function scoreCandidate(candidate, cardText) {
+    const { parsed, source } = candidate;
+    let score = 0;
+    if (parsed.livePath) score += 100;
+    if (['href','data-href','data-url','data-to','to'].includes(source)) score += 30;
+    if (source.startsWith('card-html')) score += 10;
+    if (cardText.includes(parsed.handle.toLowerCase())) score += 15;
+    return score;
   }
 
   function extractDisplayName(card, handle) {
-    if (!card?.querySelectorAll) return `@${handle}`;
-    const candidates = [...card.querySelectorAll('h1,h2,h3,h4,strong,b,[class*="name" i]')]
+    const bad = /^(live|music review|review|submissions?)$/i;
+    const candidates = [...card.querySelectorAll('h1,h2,h3,h4,h5,strong,b,[class*="name" i],[class*="title" i]')]
       .filter(visible)
       .map(el => String(el.innerText || el.textContent || '').trim())
       .filter(Boolean)
-      .filter(text => text.length <= 100 && !/live|submit|queue|review/i.test(text));
+      .filter(text => text.length <= 120 && !bad.test(text) && !/^\d[\d,]*\s+submissions?$/i.test(text));
     return candidates[0] || `@${handle}`;
   }
 
   function classify(cardText, livePath) {
     const text = norm(cardText);
-    const live = livePath || /\blive now\b|\bcurrently live\b|\bwatch live\b|\bon air\b/.test(text);
+    const live = livePath || /(^|\s)live($|\s)|live now|currently live|watch live|on air/.test(text);
     const closed = /submissions? closed|queue closed|not accepting|paused/.test(text);
-    const open = !closed && /submissions? open|accepting submissions?|submit now|join queue|submit a song|send (a )?song|next stream|upcoming/.test(text);
+    const open = !closed && (/submissions? open|accepting submissions?|submit now|join queue|submit a song|send (a )?song|next stream|upcoming/.test(text) || /\b\d[\d,]*\s+submissions?\b/.test(text));
     return {
       status: live ? 'live' : open ? 'open' : closed ? 'closed' : 'unknown',
       submissionsOpen: live || open,
@@ -46,78 +122,49 @@
     };
   }
 
-  function candidateElements() {
-    const seen = new Set();
-    const out = [];
-    const push = (el, raw, source) => {
-      const value = String(raw || '').trim();
-      if (!value) return;
-      const key = `${source}:${value}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      out.push({ el, raw: value, source });
-    };
-
-    const attrs = ['href', 'data-href', 'data-url', 'data-to', 'to'];
-    for (const attr of attrs) {
-      for (const el of document.querySelectorAll(`[${attr}]`)) {
-        const raw = attr === 'href' && el.href ? el.href : el.getAttribute(attr);
-        push(el, raw, attr);
-      }
-    }
-
-    // React apps sometimes serialize route URLs into the page before/without
-    // rendering a clickable anchor. Recover Nero URLs and creator live routes
-    // from the rendered HTML as a fallback. The shared parser still rejects
-    // reserved site routes such as /careers and /games.
-    const html = document.documentElement?.innerHTML || '';
-    const absolute = html.match(/https?:\\?\/\\?\/(?:www\\?\.)?nero\\?\.fan\\?\/[^"'<>\\\s]+/gi) || [];
-    for (const raw of absolute) push(document.body, raw.replace(/\\\//g, '/').replace(/\\u002F/gi, '/'), 'html-absolute');
-
-    const creatorRoutes = html.match(/["']\\?\/[a-z0-9._-]{2,100}\\?\/(?:live|submit|submission|review)(?:\\?\/[^"'<>\\\s]*)?/gi) || [];
-    for (const raw of creatorRoutes) {
-      const clean = raw.replace(/^["']/, '').replace(/\\\//g, '/').replace(/\\u002F/gi, '/');
-      push(document.body, clean, 'html-route');
-    }
-
-    return out;
-  }
-
   function scrape() {
+    const cards = sessionCards();
     const found = new Map();
-    const candidates = candidateElements();
-    let validCandidates = 0;
-    const sourceCounts = {};
+    let unresolvedCards = 0;
+    const diagnostics = { sessionCards: cards.length, resolvedCards: 0, unresolvedCards: 0, candidateRoutes: 0 };
 
-    for (const candidate of candidates) {
-      const parsed = parseReviewerUrl(candidate.raw, location.origin);
-      if (!parsed) continue;
-      validCandidates += 1;
-      sourceCounts[candidate.source] = (sourceCounts[candidate.source] || 0) + 1;
+    for (const card of cards) {
+      const cardTextRaw = String(card.innerText || card.textContent || '');
+      const cardText = norm(cardTextRaw);
+      const candidates = routeCandidates(card);
+      diagnostics.candidateRoutes += candidates.length;
+      if (!candidates.length) {
+        unresolvedCards += 1;
+        continue;
+      }
 
-      const card = candidate.el === document.body ? document.body : nearestCard(candidate.el);
-      const text = String(card?.innerText || card?.textContent || candidate.el?.innerText || '');
-      const classified = classify(text, parsed.livePath);
-      const existing = found.get(parsed.handle.toLowerCase());
-      const rank = { live: 4, open: 3, closed: 2, unknown: 1 };
+      candidates.sort((a, b) => scoreCandidate(b, cardText) - scoreCandidate(a, cardText));
+      const parsed = candidates[0].parsed;
+      const classified = classify(cardTextRaw, parsed.livePath);
       const item = {
         handle: parsed.handle,
-        displayName: candidate.el === document.body ? `@${parsed.handle}` : extractDisplayName(card, parsed.handle),
+        displayName: extractDisplayName(card, parsed.handle),
         neroUrl: parsed.targetUrl,
         profileUrl: parsed.profileUrl,
         status: classified.status,
         submissionsOpen: classified.submissionsOpen,
-        signals: classified.signals
+        signals: classified.signals,
+        submissionCount: Number((cardTextRaw.match(/([\d,]+)\s+submissions?/i)?.[1] || '').replace(/,/g, '')) || null
       };
-      if (!existing || rank[item.status] > rank[existing.status]) found.set(parsed.handle.toLowerCase(), item);
+
+      const key = parsed.handle.toLowerCase();
+      const existing = found.get(key);
+      const rank = { live: 4, open: 3, closed: 2, unknown: 1 };
+      if (!existing || rank[item.status] > rank[existing.status]) found.set(key, item);
+      diagnostics.resolvedCards += 1;
     }
 
+    diagnostics.unresolvedCards = unresolvedCards;
     const items = [...found.values()].sort((a, b) => {
       const rank = { live: 0, open: 1, unknown: 2, closed: 3 };
       return rank[a.status] - rank[b.status] || a.handle.localeCompare(b.handle);
     });
-
-    return { items, diagnostics: { candidates: candidates.length, validCandidates, uniqueReviewers: items.length, sourceCounts } };
+    return { items, diagnostics };
   }
 
   let lastSignature = '';
@@ -129,7 +176,7 @@
     lastDiagnostics = diagnostics;
     if (!items.length) return;
 
-    const signature = JSON.stringify(items.map(x => [x.handle, x.status, x.neroUrl]));
+    const signature = JSON.stringify(items.map(x => [x.handle, x.status, x.neroUrl, x.submissionCount]));
     if (signature === lastSignature) return;
     lastSignature = signature;
 
@@ -155,7 +202,7 @@
     clearInterval(timer);
     observer.disconnect();
     if (!saves) {
-      console.warn('[LiveFinder] Discover scan found no reviewer pool. Diagnostics:', lastDiagnostics, 'URL:', location.href);
+      console.warn('[LiveFinder] Discover found session cards but could not resolve reviewer routes. Diagnostics:', lastDiagnostics, 'URL:', location.href);
     }
   }, 30000);
 })();
