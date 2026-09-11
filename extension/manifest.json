@@ -1,8 +1,13 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.4.0",
-  "description": "Discover Nero reviewers and automate free music review submissions from LiveFinder.",
+  "version": "0.5.0",
+  "description": "Discover Nero reviewers, automate free submissions, and alert artists as queues move.",
+  "permissions": [
+    "alarms",
+    "notifications",
+    "tabs"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -20,7 +25,7 @@
     },
     {
       "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
-      "js": ["nero.js"],
+      "js": ["nero.js", "queue-monitor.js"],
       "run_at": "document_idle"
     },
     {
