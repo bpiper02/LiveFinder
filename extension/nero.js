@@ -14,7 +14,6 @@
   let flowOpened = false;
   let flowOpenedAt = 0;
   let enteredWorkflow = false;
-  let reviewerSince = 0;
 
   const norm = value => String(value || '')
     .replace(/[’‘]/g, "'")
@@ -272,7 +271,6 @@
 
   function handleMethod(root) {
     enteredWorkflow = true;
-    reviewerSince = 0;
 
     const songUrl = payload.song?.songUrl;
     let urlField = bestField(['song link', 'track link', 'music link', 'url', 'link', 'spotify', 'soundcloud', 'youtube', 'drive'], root);
@@ -298,7 +296,6 @@
 
   function handleDetails(root) {
     enteredWorkflow = true;
-    reviewerSince = 0;
 
     const song = payload.song || {};
     const mappings = [
@@ -348,7 +345,6 @@
 
   async function handleQueue(root) {
     enteredWorkflow = true;
-    reviewerSince = 0;
 
     const raw = root.innerText || root.textContent || '';
     const match = raw.match(/([\d,]+)\s+ahead of you/i);
@@ -367,7 +363,6 @@
 
   function handleWait(root) {
     enteredWorkflow = true;
-    reviewerSince = 0;
 
     const waitButton = clickableElements(root).find(el => {
       const text = norm(el.innerText || el.textContent);
@@ -401,7 +396,7 @@
     stopLoop();
     await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
     showBadge(`LiveFinder stopped: ${reason}`, 'error');
-    console.warn('[LiveFinder] stopped:', reason);
+    console.log('[LiveFinder] stopped:', reason);
   }
 
   async function tick() {
@@ -415,8 +410,8 @@
     try {
       const { state, root } = detectState();
       if (state !== lastState) {
-        lastState = state;
         console.log('[LiveFinder] state:', state);
+        lastState = state;
       }
 
       if (state === 'REVIEWER') {
@@ -424,18 +419,27 @@
           openSubmissionModal();
           return;
         }
+
         if (!enteredWorkflow && Date.now() - flowOpenedAt > 7000) {
           await abortRun('could not recognize Nero first step.');
           return;
         }
+
+        // Nero closes the wizard after the free “I’ll wait” action. That return to
+        // the live/reviewer page is the happy-path completion signal, not a cancel.
+        if (enteredWorkflow && lastAction === 'ill-wait' && Date.now() - lastActionAt < 15000) {
+          await completeRun();
+          return;
+        }
+
+        // Once the wizard has started, Nero can briefly unmount/re-route between
+        // steps. Do not misclassify that transition as a user cancellation. The
+        // global run timeout remains the fallback for a genuinely abandoned flow.
         if (enteredWorkflow) {
-          reviewerSince ||= Date.now();
-          if (Date.now() - reviewerSince > 1400) await abortRun('submission window was closed or exited.');
+          showBadge('LiveFinder: waiting for Nero to finish the transition…');
         }
         return;
       }
-
-      reviewerSince = 0;
 
       if (state === 'METHOD') handleMethod(root);
       else if (state === 'DETAILS') handleDetails(root);
