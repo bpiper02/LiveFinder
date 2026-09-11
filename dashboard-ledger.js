@@ -69,13 +69,9 @@
       if (!runs.length) return;
 
       const changed = mergeRuns(runs);
-      const terminalIds = runs
-        .filter(run => run?.status === 'submitted')
-        .map(run => run.id)
-        .filter(Boolean);
-
-      if (terminalIds.length) {
-        window.postMessage({ source: WEB_SOURCE, type: 'ACK_DASHBOARD_RUNS', ids: terminalIds }, '*');
+      const importedIds = runs.map(run => run?.id).filter(Boolean);
+      if (importedIds.length) {
+        window.postMessage({ source: WEB_SOURCE, type: 'ACK_DASHBOARD_RUNS', ids: importedIds }, '*');
       }
 
       if (changed && !handled) {
