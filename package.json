@@ -1,19 +1,14 @@
 {
-  "name": "nero-router",
+  "name": "livefinder",
   "private": true,
-  "version": "0.1.0",
-  "type": "module",
+  "version": "0.3.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "qa": "node --check app.js && node --check extension/background.js && node --check extension/bridge.js && node --check extension/nero.js"
   },
-  "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest",
-    "react": "latest",
-    "react-dom": "latest"
-  },
-  "devDependencies": {}
+  "devDependencies": {
+    "vite": "latest"
+  }
 }
