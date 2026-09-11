@@ -1,12 +1,12 @@
 {
   "name": "livefinder",
   "private": true,
-  "version": "0.3.1",
+  "version": "0.4.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "qa": "node --check app.js && node --check extension/background.js && node --check extension/bridge.js && node --check extension/nero.js"
+    "qa": "node --check app.js && node --check extension/background.js && node --check extension/bridge.js && node --check extension/nero.js && node --check extension/discover.js"
   },
   "devDependencies": {
     "vite": "latest"
