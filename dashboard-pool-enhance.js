@@ -5,8 +5,6 @@
   let poolItems = [];
   let scheduled = false;
 
-  const norm = value => String(value || '').trim().toLowerCase();
-
   function readState() {
     try {
       const state = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
@@ -58,9 +56,15 @@
       link.rel = 'noopener noreferrer';
       container.appendChild(link);
     }
-    link.href = item.streamUrl;
-    link.textContent = streamLabel(item);
-    link.title = item.streamDerived ? 'LiveFinder derived the live path from the social profile Nero exposes.' : 'Open the stream destination Nero exposes.';
+
+    const label = streamLabel(item);
+    const title = item.streamDerived
+      ? 'LiveFinder derived the live path from the social profile Nero exposes.'
+      : 'Open the stream destination Nero exposes.';
+
+    if (link.getAttribute('href') !== item.streamUrl) link.setAttribute('href', item.streamUrl);
+    if (link.textContent !== label) link.textContent = label;
+    if (link.title !== title) link.title = title;
   }
 
   function neroUrlFromPoolCard(card) {
@@ -74,34 +78,40 @@
     const submittedColumn = document.getElementById('poolSubmitted');
     if (!submittedColumn) return;
 
-    const sourceColumns = ['poolLive', 'poolOpen', 'poolOther'];
-    for (const id of sourceColumns) {
+    for (const id of ['poolLive', 'poolOpen', 'poolOther']) {
       const column = document.getElementById(id);
       if (!column) continue;
+
       for (const card of [...column.querySelectorAll('.poolCard')]) {
         const url = neroUrlFromPoolCard(card);
         const item = poolItemForReviewer(url);
         if (item) addStreamLink(card, item);
+
         const submission = currentSubmissionFor(url);
         if (!submission) continue;
 
         const select = card.querySelector('select[data-pool-url]');
-        if (select) {
+        if (select && !select.disabled) {
           select.disabled = true;
           select.title = 'Already submitted to this reviewer recently.';
         }
         const chip = card.querySelector('.statusChip');
-        if (chip) chip.textContent = submission.status === 'submitted' ? 'submitted' : submission.status;
+        const status = submission.status === 'submitted' ? 'submitted' : submission.status;
+        if (chip && chip.textContent !== status) chip.textContent = status;
         card.dataset.livefinderSubmitted = '1';
         submittedColumn.appendChild(card);
       }
     }
 
-    if (!submittedColumn.querySelector('.poolCard')) {
-      submittedColumn.innerHTML = '<p class="empty">No recent submissions in this pool.</p>';
-    } else {
-      submittedColumn.querySelectorAll('.empty').forEach(el => el.remove());
+    const hasCards = !!submittedColumn.querySelector('.poolCard');
+    const empty = submittedColumn.querySelector(':scope > .empty');
+    if (!hasCards && !empty) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = 'No recent submissions in this pool.';
+      submittedColumn.appendChild(p);
     }
+    if (hasCards && empty) empty.remove();
   }
 
   function decorateHistory() {
@@ -113,8 +123,7 @@
       const item = poolItemForReviewer(reviewer.href);
       if (!item?.streamUrl) continue;
       const cell = reviewer.parentElement;
-      if (!cell) continue;
-      addStreamLink(cell, item);
+      if (cell) addStreamLink(cell, item);
     }
   }
 
