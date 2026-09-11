@@ -1,23 +1,26 @@
 (() => {
-  const STORAGE_KEYS = ['pendingNeroSubmission', 'pendingNeroSubmissionStoredAt'];
-  const MAX_AGE_MS = 10 * 60 * 1000;
+  const MAX_RUN_AGE_MS = 10 * 60 * 1000;
+  const TICK_MS = 350;
+  const MAX_RUN_MS = 2 * 60 * 1000;
 
   let payload = null;
   let queueAhead = null;
   let finished = false;
+  let intervalId = null;
+  let startedAt = Date.now();
   let lastState = '';
   let lastAction = '';
   let lastActionAt = 0;
-
-  // Lifecycle guards. A LiveFinder run may open Nero's submission flow ONCE.
-  // Returning to the reviewer page after that is treated as an abort/close,
-  // never as permission to reopen the modal forever.
   let flowOpened = false;
   let flowOpenedAt = 0;
   let enteredWorkflow = false;
   let reviewerSince = 0;
 
-  const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const norm = value => String(value || '')
+    .replace(/[’‘]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 
   const visible = el => {
     if (!el) return false;
@@ -35,7 +38,7 @@
         position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647',
         background: '#111', color: '#fff', padding: '10px 14px', borderRadius: '10px',
         font: '13px/1.35 system-ui, sans-serif', boxShadow: '0 6px 24px rgba(0,0,0,.25)',
-        maxWidth: '380px', border: '1px solid rgba(255,255,255,.16)'
+        maxWidth: '390px', border: '1px solid rgba(255,255,255,.16)'
       });
       document.documentElement.appendChild(badge);
     }
@@ -43,16 +46,56 @@
     badge.style.background = kind === 'error' ? '#5b1717' : kind === 'success' ? '#153d27' : '#111';
   }
 
+  function stopLoop() {
+    if (intervalId) clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  function runtimeSend(message, timeoutMs = 2500) {
+    return new Promise((resolve, reject) => {
+      if (!globalThis.chrome?.runtime?.sendMessage) {
+        reject(new Error('Extension context unavailable. Reload the extension and refresh this Nero tab.'));
+        return;
+      }
+
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Extension background did not respond in time.'));
+      }, timeoutMs);
+
+      try {
+        chrome.runtime.sendMessage(message, response => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          const runtimeError = chrome.runtime?.lastError;
+          if (runtimeError) {
+            reject(new Error(runtimeError.message || String(runtimeError)));
+            return;
+          }
+          resolve(response);
+        });
+      } catch (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
+  }
+
   function textFor(el, root = document) {
     const parts = [el.name, el.id, el.placeholder, el.getAttribute?.('aria-label'), el.getAttribute?.('autocomplete')];
     if (el.id) {
       const label = root.querySelector?.(`label[for="${CSS.escape(el.id)}"]`) || document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label && visible(label)) parts.push(label.textContent);
+      if (label) parts.push(label.textContent);
     }
     const wrappingLabel = el.closest?.('label');
-    if (wrappingLabel && visible(wrappingLabel)) parts.push(wrappingLabel.textContent);
+    if (wrappingLabel) parts.push(wrappingLabel.textContent);
     const parentText = el.parentElement?.innerText;
-    if (parentText && parentText.length < 260) parts.push(parentText);
+    if (parentText && parentText.length < 280) parts.push(parentText);
     return norm(parts.filter(Boolean).join(' '));
   }
 
@@ -63,12 +106,13 @@
     descriptor?.set?.call(el, String(value));
     el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(value) }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
 
-  function guardedClick(el, action) {
+  function guardedClick(el, action, cooldown = 900) {
     const now = Date.now();
     if (!el || !visible(el) || el.disabled) return false;
-    if (lastAction === action && now - lastActionAt < 1200) return false;
+    if (lastAction === action && now - lastActionAt < cooldown) return false;
     lastAction = action;
     lastActionAt = now;
     el.scrollIntoView?.({ block: 'center', inline: 'center' });
@@ -81,9 +125,12 @@
     return [...root.querySelectorAll('button, a, [role="button"]')].filter(el => visible(el) && !el.disabled);
   }
 
-  function findClickableContaining(text, root = document) {
+  function findClickable(text, root = document, exact = false) {
     const wanted = norm(text);
-    return clickableElements(root).find(el => norm(el.innerText || el.textContent).includes(wanted)) || null;
+    return clickableElements(root).find(el => {
+      const value = norm(el.innerText || el.textContent);
+      return exact ? value === wanted : value.includes(wanted);
+    }) || null;
   }
 
   function visibleInputs(root = document) {
@@ -91,12 +138,15 @@
   }
 
   function bestField(hints, root = document) {
-    const candidates = visibleInputs(root).filter(el => !['file', 'checkbox', 'radio'].includes(el.type));
-    return candidates.map(el => {
-      const haystack = textFor(el, root);
-      const score = hints.reduce((sum, hint) => sum + (haystack.includes(hint) ? hint.length : 0), 0);
-      return { el, score };
-    }).filter(x => x.score > 0).sort((a, b) => b.score - a.score)[0]?.el || null;
+    return visibleInputs(root)
+      .filter(el => !['file', 'checkbox', 'radio'].includes(el.type))
+      .map(el => {
+        const haystack = textFor(el, root);
+        const score = hints.reduce((sum, hint) => sum + (haystack.includes(hint) ? hint.length : 0), 0);
+        return { el, score };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)[0]?.el || null;
   }
 
   function activeWorkflowRoot() {
@@ -109,22 +159,17 @@
       });
     if (semantic[0]) return semantic[0];
 
-    // Nero does not always expose dialog semantics. Find a visible container that
-    // actually contains controls/text unique to the submission wizard.
-    const containers = [...document.querySelectorAll('form, section, div')].filter(visible);
-    const scored = containers.map(el => {
-      const text = norm(el.innerText || '');
-      if (!text || text.length > 3500) return { el, score: 0 };
-      let score = 0;
-      if (text.includes('submit a link')) score += 8;
-      if (text.includes('artist name')) score += 6;
-      if (text.includes('song title')) score += 6;
-      if (text.includes('ahead of you')) score += 10;
-      if (text.includes('skip')) score += 3;
-      if (text.includes('email')) score += 2;
-      return { el, score };
-    }).filter(x => x.score > 0)
-      .sort((a, b) => b.score - a.score || (a.el.getBoundingClientRect().width * a.el.getBoundingClientRect().height) - (b.el.getBoundingClientRect().width * b.el.getBoundingClientRect().height));
+    const terms = ['submit a link', 'artist name', 'song title', 'ahead of you', "i'll wait", 'super skip', 'throne'];
+    const scored = [...document.querySelectorAll('form, section, div')]
+      .filter(visible)
+      .map(el => {
+        const text = norm(el.innerText || '');
+        if (!text || text.length > 4000) return { el, score: 0 };
+        const score = terms.reduce((sum, term) => sum + (text.includes(term) ? term.length : 0), 0);
+        return { el, score };
+      })
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score);
 
     return scored[0]?.el || null;
   }
@@ -136,76 +181,117 @@
     const text = norm(root.innerText || root.textContent || '');
     const inputs = visibleInputs(root);
 
-    // Later/more specific states first.
-    if (/submission received|successfully submitted|added to (the )?queue|you('|’)re in|you are in the queue/.test(text)) {
+    if (/submission received|successfully submitted|added to (the )?queue|you are in the queue|you're in/.test(text)) {
       return { state: 'COMPLETE', root };
     }
 
-    if (/ahead of you/.test(text) && /skip/.test(text)) {
-      return { state: 'QUEUE', root };
-    }
+    if (text.includes("i'll wait")) return { state: 'WAIT', root };
+    if (text.includes('ahead of you') && /skip|super skip|throne/.test(text)) return { state: 'QUEUE', root };
 
     const hasArtist = inputs.some(el => /artist/.test(textFor(el, root)));
     const hasTitle = inputs.some(el => /song title|track title|song name|track name|title/.test(textFor(el, root)));
     const hasEmail = inputs.some(el => /email|e-mail/.test(textFor(el, root)));
-    if ((hasArtist && hasTitle && hasEmail) || (/artist name/.test(text) && /song title/.test(text) && /email/.test(text))) {
+    if ((hasArtist && hasTitle && hasEmail) || (text.includes('artist name') && text.includes('song title') && text.includes('email'))) {
       return { state: 'DETAILS', root };
     }
 
-    // Method screen: do not depend on one exact heading sentence.
-    const hasSubmitLinkControl = !!findClickableContaining('submit a link', root);
+    const hasSubmitLinkControl = !!findClickable('submit a link', root);
     const hasUrlField = inputs.some(el => /url|link|spotify|soundcloud|youtube|drive/.test(textFor(el, root)));
-    if (hasSubmitLinkControl || hasUrlField || text.includes('submit a link')) {
-      return { state: 'METHOD', root };
-    }
+    if (hasSubmitLinkControl || hasUrlField || text.includes('submit a link')) return { state: 'METHOD', root };
 
     return { state: 'UNKNOWN', root };
   }
 
   function findNextButton(root) {
-    return clickableElements(root).find(el => norm(el.innerText || el.textContent) === 'next') || null;
+    return findClickable('next', root, true);
+  }
+
+  function findTermsControl(root) {
+    const native = [...root.querySelectorAll('input[type="checkbox"]')];
+    for (const checkbox of native) {
+      const haystack = textFor(checkbox, root);
+      if (/terms|conditions|agree|accept/.test(haystack)) return checkbox;
+    }
+
+    const roleBoxes = [...root.querySelectorAll('[role="checkbox"]')].filter(visible);
+    for (const checkbox of roleBoxes) {
+      const text = norm(`${checkbox.getAttribute('aria-label') || ''} ${checkbox.parentElement?.innerText || ''}`);
+      if (/terms|conditions|agree|accept/.test(text)) return checkbox;
+    }
+
+    const textNode = [...root.querySelectorAll('label, span, p, div')]
+      .filter(visible)
+      .find(el => /terms|conditions|agree|accept/.test(norm(el.innerText || el.textContent)));
+    if (textNode) {
+      const label = textNode.closest('label');
+      if (label) return label;
+      const container = textNode.closest('div, section');
+      const box = container?.querySelector?.('input[type="checkbox"], [role="checkbox"]');
+      if (box) return box;
+    }
+
+    const all = [...root.querySelectorAll('input[type="checkbox"], [role="checkbox"]')];
+    if (all.length === 1) return all[0];
+    return null;
+  }
+
+  function controlChecked(control) {
+    if (!control) return false;
+    if (control.matches?.('input[type="checkbox"]')) return !!control.checked;
+    return control.getAttribute?.('aria-checked') === 'true' || control.querySelector?.('input[type="checkbox"]')?.checked === true;
+  }
+
+  function ensureTerms(root) {
+    const control = findTermsControl(root);
+    if (!control) return false;
+    if (controlChecked(control)) return true;
+
+    control.scrollIntoView?.({ block: 'center' });
+    control.click();
+    control.dispatchEvent?.(new Event('input', { bubbles: true }));
+    control.dispatchEvent?.(new Event('change', { bubbles: true }));
+    console.log('[LiveFinder] terms accepted');
+    return controlChecked(control) || true;
   }
 
   function openSubmissionModal() {
     if (flowOpened) return;
     const button = clickableElements(document).find(el => {
-      const t = norm(el.innerText || el.textContent);
-      return t === 'submit' || t === 'submit song' || t === 'submit a song';
+      const text = norm(el.innerText || el.textContent);
+      return text === 'submit' || text === 'submit song' || text === 'submit a song';
     });
-
     if (!button) {
-      showBadge('LiveFinder is connected. Waiting for Nero\'s Submit button…');
+      showBadge('LiveFinder: waiting for Nero Submit button…');
       return;
     }
-
     flowOpened = true;
     flowOpenedAt = Date.now();
-    showBadge('LiveFinder: opening Nero submission flow…');
-    guardedClick(button, 'open-submit-modal');
+    showBadge('LiveFinder: opening submission…');
+    guardedClick(button, 'open-submit');
   }
 
   function handleMethod(root) {
     enteredWorkflow = true;
     reviewerSince = 0;
-    showBadge('LiveFinder: choosing link submission…');
 
+    const songUrl = payload.song?.songUrl;
     let urlField = bestField(['song link', 'track link', 'music link', 'url', 'link', 'spotify', 'soundcloud', 'youtube', 'drive'], root);
 
     if (!urlField) {
-      const linkChoice = findClickableContaining('submit a link', root);
-      if (linkChoice) guardedClick(linkChoice, 'choose-submit-link');
+      const choice = findClickable('submit a link', root);
+      if (choice) guardedClick(choice, 'choose-link');
       return;
     }
 
-    if (payload.song?.songUrl && String(urlField.value || '') !== String(payload.song.songUrl)) {
-      setNativeValue(urlField, payload.song.songUrl);
-      console.log('[LiveFinder] filled song URL');
+    if (songUrl && String(urlField.value || '') !== String(songUrl)) {
+      setNativeValue(urlField, songUrl);
+      showBadge('LiveFinder: song link filled…');
       return;
     }
 
     const next = findNextButton(root);
     if (next) {
-      showBadge('LiveFinder: song link entered. Moving to details…');
+      showBadge('LiveFinder: moving to details…');
       guardedClick(next, 'method-next');
     }
   }
@@ -213,6 +299,7 @@
   function handleDetails(root) {
     enteredWorkflow = true;
     reviewerSince = 0;
+
     const song = payload.song || {};
     const mappings = [
       { value: song.artist, hints: ['artist name', 'artist'] },
@@ -223,109 +310,113 @@
     ];
 
     let changed = false;
-    const knownFields = new Set();
+    const known = new Set();
 
     for (const mapping of mappings) {
       if (!mapping.value) continue;
-      const el = bestField(mapping.hints, root);
-      if (!el) continue;
-      knownFields.add(el);
-      if (String(el.value || '') !== String(mapping.value)) {
-        setNativeValue(el, mapping.value);
+      const field = bestField(mapping.hints, root);
+      if (!field) continue;
+      known.add(field);
+      if (String(field.value || '') !== String(mapping.value)) {
+        setNativeValue(field, mapping.value);
         changed = true;
       }
     }
 
-    const checkboxes = [...root.querySelectorAll('input[type="checkbox"]')].filter(visible);
-    let termsCheckbox = checkboxes.find(el => /terms|conditions|accept/.test(textFor(el, root)));
-    if (!termsCheckbox && checkboxes.length === 1) termsCheckbox = checkboxes[0];
-
-    if (termsCheckbox && !termsCheckbox.checked) {
-      termsCheckbox.click();
-      termsCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-      changed = true;
-      console.log('[LiveFinder] accepted terms');
-    }
-
+    const termsWasChecked = ensureTerms(root);
     if (changed) {
-      showBadge('LiveFinder: filled details and accepted terms…');
+      showBadge('LiveFinder: details filled…');
       return;
     }
 
-    const unknownRequired = [...root.querySelectorAll('input[required], textarea[required]')]
-      .filter(el => visible(el) && !el.disabled && el.type !== 'checkbox' && !knownFields.has(el) && !String(el.value || '').trim());
-
-    if (unknownRequired.length) {
-      showBadge('LiveFinder stopped: reviewer has an extra required field. Fill it manually, then press Next.', 'error');
+    const requiredUnknown = [...root.querySelectorAll('input[required], textarea[required]')]
+      .filter(el => visible(el) && !el.disabled && el.type !== 'checkbox' && !known.has(el) && !String(el.value || '').trim());
+    if (requiredUnknown.length) {
+      showBadge('LiveFinder stopped: reviewer has an extra required field.', 'error');
       return;
     }
 
     const next = findNextButton(root);
-    if (next) {
-      showBadge('LiveFinder: details complete. Moving to queue…');
-      guardedClick(next, 'details-next');
-    } else {
-      showBadge('LiveFinder filled the details, but Nero has not enabled Next yet.', 'error');
+    if (!next) {
+      showBadge(termsWasChecked ? 'LiveFinder: waiting for Nero to enable Next…' : 'LiveFinder: waiting for terms control…');
+      return;
     }
+
+    showBadge('LiveFinder: details complete. Moving to queue…');
+    guardedClick(next, 'details-next');
   }
 
   async function handleQueue(root) {
     enteredWorkflow = true;
     reviewerSince = 0;
+
     const raw = root.innerText || root.textContent || '';
     const match = raw.match(/([\d,]+)\s+ahead of you/i);
     if (match) queueAhead = Number(match[1].replace(/,/g, ''));
 
-    await chrome.storage.local.set({
-      lastNeroQueue: { reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, capturedAt: Date.now() }
-    });
+    runtimeSend({
+      type: 'SAVE_NERO_QUEUE',
+      value: { reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, capturedAt: Date.now() }
+    }).catch(() => {});
 
-    showBadge(`LiveFinder: ${queueAhead ?? '?'} ahead. Taking free path; no paid skip.`);
+    showBadge(`LiveFinder: ${queueAhead ?? '?'} ahead. Avoiding all paid skips.`);
 
-    // Only the footer Next is allowed. Never click Skip/Super Skip/Throne.
     const next = findNextButton(root);
-    if (next) guardedClick(next, 'queue-free-next');
+    if (next) guardedClick(next, 'queue-next');
   }
 
-  async function handleComplete() {
+  function handleWait(root) {
+    enteredWorkflow = true;
+    reviewerSince = 0;
+
+    const waitButton = clickableElements(root).find(el => {
+      const text = norm(el.innerText || el.textContent);
+      return text.includes("i'll wait") && !text.includes('skip') && !text.includes('$');
+    });
+
+    if (!waitButton) {
+      showBadge("LiveFinder: waiting for the free 'I'll wait' option…");
+      return;
+    }
+
+    showBadge("LiveFinder: choosing 'I'll wait'…");
+    guardedClick(waitButton, 'ill-wait');
+  }
+
+  async function completeRun() {
     if (finished) return;
     finished = true;
-    await chrome.storage.local.set({
-      lastNeroResult: { status: 'submitted', reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, completedAt: Date.now() }
-    });
-    await chrome.storage.local.remove(STORAGE_KEYS);
+    stopLoop();
+
+    const result = { status: 'submitted', reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, completedAt: Date.now() };
+    await runtimeSend({ type: 'SAVE_NERO_RESULT', value: result }).catch(() => {});
+    await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
     showBadge(`LiveFinder: submitted${queueAhead != null ? ` · ${queueAhead} ahead captured` : ''}.`, 'success');
-    console.log('[LiveFinder] Nero submission complete', { queueAhead });
+    console.log('[LiveFinder] complete', result);
   }
 
   async function abortRun(reason) {
     if (finished) return;
     finished = true;
-    await chrome.storage.local.remove(STORAGE_KEYS);
+    stopLoop();
+    await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
     showBadge(`LiveFinder stopped: ${reason}`, 'error');
-    console.warn('[LiveFinder] run aborted:', reason);
-  }
-
-  async function getPendingPayload() {
-    const result = await chrome.storage.local.get(STORAGE_KEYS);
-    const candidate = result.pendingNeroSubmission;
-    const storedAt = result.pendingNeroSubmissionStoredAt || 0;
-    if (!candidate || Date.now() - storedAt > MAX_AGE_MS) {
-      await chrome.storage.local.remove(STORAGE_KEYS);
-      return null;
-    }
-    if (candidate.source !== 'livefinder' || candidate.type !== 'PREPARE_NERO_SUBMISSION') return null;
-    return candidate;
+    console.warn('[LiveFinder] stopped:', reason);
   }
 
   async function tick() {
     if (!payload || finished) return;
 
+    if (Date.now() - startedAt > MAX_RUN_MS) {
+      await abortRun('run timed out after two minutes.');
+      return;
+    }
+
     try {
       const { state, root } = detectState();
       if (state !== lastState) {
-        console.log('[LiveFinder] state:', state);
         lastState = state;
+        console.log('[LiveFinder] state:', state);
       }
 
       if (state === 'REVIEWER') {
@@ -333,52 +424,65 @@
           openSubmissionModal();
           return;
         }
-
-        // Give Nero time to animate/render the first step after the one allowed click.
-        if (!enteredWorkflow && Date.now() - flowOpenedAt > 6000) {
-          await abortRun('opened Submit, but could not recognize Nero\'s first submission screen.');
+        if (!enteredWorkflow && Date.now() - flowOpenedAt > 7000) {
+          await abortRun('could not recognize Nero first step.');
           return;
         }
-
-        // If we were already inside the wizard and are now back on the reviewer page,
-        // the user closed/cancelled it or Nero exited the flow. Never reopen automatically.
         if (enteredWorkflow) {
           reviewerSince ||= Date.now();
-          if (Date.now() - reviewerSince > 1200) {
-            await abortRun('submission window was closed or exited.');
-          }
+          if (Date.now() - reviewerSince > 1400) await abortRun('submission window was closed or exited.');
         }
         return;
       }
 
-      if (state === 'UNKNOWN') {
-        if (flowOpened && Date.now() - flowOpenedAt > 6000 && !enteredWorkflow) {
-          await abortRun('Nero opened a screen LiveFinder does not recognize yet.');
-        }
-        return;
-      }
+      reviewerSince = 0;
 
       if (state === 'METHOD') handleMethod(root);
       else if (state === 'DETAILS') handleDetails(root);
       else if (state === 'QUEUE') await handleQueue(root);
-      else if (state === 'COMPLETE') await handleComplete();
+      else if (state === 'WAIT') handleWait(root);
+      else if (state === 'COMPLETE') await completeRun();
+      else if (state === 'UNKNOWN' && flowOpened && !enteredWorkflow && Date.now() - flowOpenedAt > 7000) {
+        await abortRun('Nero opened an unrecognized submission screen.');
+      }
     } catch (err) {
+      const message = String(err?.message || err);
       console.error('[LiveFinder] automation error', err);
-      showBadge('LiveFinder hit an unexpected Nero state. Check the console.', 'error');
+      if (/extension context|receiving end|message port|runtime unavailable/i.test(message)) {
+        finished = true;
+        stopLoop();
+        showBadge('LiveFinder extension was reloaded. Refresh this Nero tab and start a new run.', 'error');
+        return;
+      }
+      showBadge(`LiveFinder error: ${message}`, 'error');
     }
   }
 
   async function main() {
-    console.log('[LiveFinder] Nero workflow script loaded on', location.href);
-    payload = await getPendingPayload();
-    if (!payload) {
-      console.log('[LiveFinder] No pending Nero submission found.');
-      return;
-    }
+    console.log('[LiveFinder] controller loaded', location.href);
 
-    showBadge('LiveFinder connected. Starting Nero submission…');
-    setInterval(tick, 500);
-    tick();
+    try {
+      const response = await runtimeSend({ type: 'GET_NERO_SUBMISSION' });
+      const record = response?.record;
+      if (!response?.ok || !record?.payload) {
+        console.log('[LiveFinder] no pending run');
+        return;
+      }
+      if (Date.now() - Number(record.storedAt || 0) > MAX_RUN_AGE_MS) {
+        await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
+        console.log('[LiveFinder] pending run expired');
+        return;
+      }
+
+      payload = record.payload;
+      startedAt = Date.now();
+      showBadge('LiveFinder connected. Starting Nero submission…');
+      intervalId = setInterval(tick, TICK_MS);
+      tick();
+    } catch (err) {
+      console.error('[LiveFinder] startup failed', err);
+      showBadge('LiveFinder could not reach its extension background. Reload extension + refresh this tab.', 'error');
+    }
   }
 
   main();
