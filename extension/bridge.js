@@ -1,14 +1,32 @@
 (() => {
   const WEB_SOURCE = 'livefinder-web';
   const EXT_SOURCE = 'livefinder-extension';
+  const RELOAD_GUARD_KEY = 'livefinder-stale-reload-at';
 
   function isStaleContextError(err) {
     const text = String(err?.message || err || '').toLowerCase();
     return text.includes('extension context invalidated') || text.includes('context invalidated');
   }
 
-  function postStaleContext() {
-    window.postMessage({ source: EXT_SOURCE, type: 'EXTENSION_CONTEXT_STALE' }, '*');
+  function recoverFromStaleContext() {
+    const now = Date.now();
+    const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || 0);
+
+    // A content script whose extension was reloaded can still reload the host page.
+    // That gives Chrome a chance to inject a fresh copy from the current extension.
+    if (now - last > 5000) {
+      sessionStorage.setItem(RELOAD_GUARD_KEY, String(now));
+      console.info('[LiveFinder] extension updated; refreshing dashboard once…');
+      window.location.reload();
+      return;
+    }
+
+    // Guard against a pathological reload loop. Surface a clean signal instead.
+    window.postMessage({
+      source: EXT_SOURCE,
+      type: 'NERO_SUBMISSION_STORE_FAILED',
+      error: 'The LiveFinder extension was reloaded. Refresh this page once, then try again.'
+    }, '*');
   }
 
   function sendRuntime(message, timeoutMs = 2500) {
@@ -51,10 +69,13 @@
   async function announceReady() {
     try {
       const response = await sendRuntime({ type: 'PING' });
-      if (response?.ok) window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
+      if (response?.ok) {
+        sessionStorage.removeItem(RELOAD_GUARD_KEY);
+        window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
+      }
     } catch (err) {
       if (isStaleContextError(err)) {
-        postStaleContext();
+        recoverFromStaleContext();
         return;
       }
       console.warn('[LiveFinder] bridge not ready', err);
@@ -73,7 +94,7 @@
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORED' }, '*');
       } catch (err) {
         if (isStaleContextError(err)) {
-          postStaleContext();
+          recoverFromStaleContext();
           return;
         }
         console.warn('[LiveFinder] Could not store pending Nero submission', err);
@@ -88,7 +109,7 @@
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS', queue: response?.queue || null, result: response?.result || null }, '*');
       } catch (err) {
         if (isStaleContextError(err)) {
-          postStaleContext();
+          recoverFromStaleContext();
           return;
         }
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS_FAILED', error: String(err?.message || err) }, '*');
