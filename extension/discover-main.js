@@ -6,12 +6,18 @@
   const SOURCE_OUT = 'livefinder-discover-main';
   const MAX_VISITS = 700;
   const MAX_DEPTH = 6;
-  const HANDLE_KEY_RE = /(?:^|[_-])(username|user_name|handle|slug|creator_slug|creator_handle|profile_slug)$/i;
+  const MAX_FIBER_HOPS = 7;
+  const HANDLE_KEY_RE = /(?:^|[._-])(username|user_name|handle|slug|creator_slug|creator_handle|profile_slug)$/i;
   const URL_KEY_RE = /(href|url|link|path|pathname|route|permalink|share)/i;
   const HANDLE_VALUE_RE = /^@?[a-z0-9._-]{2,100}$/i;
 
   function post(type, payload) {
     window.postMessage({ source: SOURCE_OUT, type, ...payload }, '*');
+  }
+
+  function hopPenalty(hint) {
+    const match = String(hint || '').match(/fiber\.(?:memoizedProps|pendingProps)\.(\d+)/);
+    return match ? Math.min(50, Number(match[1]) * 8) : 0;
   }
 
   function addCandidate(out, seen, value, hint, score) {
@@ -20,7 +26,11 @@
     const key = `${raw}::${hint}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ value: raw, hint: String(hint || ''), score: Number(score || 0) });
+    out.push({
+      value: raw,
+      hint: String(hint || ''),
+      score: Math.max(0, Number(score || 0) - hopPenalty(hint))
+    });
   }
 
   function collectValue(value, keyHint, out, seenCandidates, seenObjects, state, depth = 0) {
@@ -52,7 +62,7 @@
       if (key === 'children' && depth > 2) continue;
       if (key === '_owner' || key === 'ref') continue;
       if (typeof child === 'function' || typeof child === 'symbol') continue;
-      collectValue(child, key, out, seenCandidates, seenObjects, state, depth + 1);
+      collectValue(child, `${keyHint}.${key}`, out, seenCandidates, seenObjects, state, depth + 1);
     }
   }
 
@@ -62,8 +72,8 @@
     const nodes = [];
 
     let ancestor = element;
-    for (let i = 0; i < 5 && ancestor; i += 1, ancestor = ancestor.parentElement) nodes.push(ancestor);
-    for (const child of [...element.querySelectorAll('*')].slice(0, 50)) nodes.push(child);
+    for (let i = 0; i < 4 && ancestor; i += 1, ancestor = ancestor.parentElement) nodes.push(ancestor);
+    for (const child of [...element.querySelectorAll('*')].slice(0, 40)) nodes.push(child);
 
     for (const node of nodes) {
       let keys = [];
@@ -75,7 +85,7 @@
         if (!key.startsWith('__reactFiber$')) continue;
         let fiber;
         try { fiber = node[key]; } catch { fiber = null; }
-        for (let hop = 0; fiber && hop < 12; hop += 1, fiber = fiber.return) {
+        for (let hop = 0; fiber && hop < MAX_FIBER_HOPS; hop += 1, fiber = fiber.return) {
           if (seenFibers.has(fiber)) continue;
           seenFibers.add(fiber);
           if (fiber.memoizedProps) payloads.push({ value: fiber.memoizedProps, hint: `fiber.memoizedProps.${hop}` });
