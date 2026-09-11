@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>LiveFinder Assist</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">LIVEFINDER ASSIST</p>
+        <h1>Music submission autofill</h1>
+      </div>
+      <span id="siteBadge" class="badge">checking…</span>
+    </header>
+
+    <section class="contextCard">
+      <strong id="contextTitle">Checking this page…</strong>
+      <span id="contextDetail">LiveFinder only fills what it can match confidently.</span>
+    </section>
+
+    <section>
+      <label for="songSelect">Saved song</label>
+      <div class="row">
+        <select id="songSelect">
+          <option value="">Manual draft</option>
+        </select>
+        <button id="resetDraft" class="secondary" type="button">Reset</button>
+      </div>
+      <p id="libraryHint" class="hint">Changes below apply only to this submission.</p>
+    </section>
+
+    <section class="fields">
+      <label>Artist<input id="artist" autocomplete="off" /></label>
+      <label>Song title<input id="title" autocomplete="off" /></label>
+      <label>Song link<input id="songUrl" type="url" autocomplete="off" /></label>
+      <label>Email<input id="email" type="email" autocomplete="off" /></label>
+      <label>Instagram<input id="instagram" autocomplete="off" /></label>
+      <label>Reviewer note<textarea id="note" rows="4"></textarea></label>
+    </section>
+
+    <section class="actions">
+      <button id="autofillCurrent" type="button">Autofill current form</button>
+      <button id="runFullAuto" class="secondary strong" type="button">Run full free submission</button>
+    </section>
+
+    <section id="result" class="result" aria-live="polite">
+      <strong>Ready.</strong>
+      <span>Open a Nero reviewer page to begin.</span>
+    </section>
+
+    <footer>Assist never selects paid skips. Full auto uses LiveFinder’s existing free Nero path.</footer>
+  </main>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
