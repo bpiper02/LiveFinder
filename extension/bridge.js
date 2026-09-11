@@ -2,6 +2,15 @@
   const WEB_SOURCE = 'livefinder-web';
   const EXT_SOURCE = 'livefinder-extension';
 
+  function isStaleContextError(err) {
+    const text = String(err?.message || err || '').toLowerCase();
+    return text.includes('extension context invalidated') || text.includes('context invalidated');
+  }
+
+  function postStaleContext() {
+    window.postMessage({ source: EXT_SOURCE, type: 'EXTENSION_CONTEXT_STALE' }, '*');
+  }
+
   function sendRuntime(message, timeoutMs = 2500) {
     return new Promise((resolve, reject) => {
       if (!globalThis.chrome?.runtime?.sendMessage) {
@@ -21,7 +30,9 @@
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          const runtimeError = chrome.runtime?.lastError;
+
+          let runtimeError = null;
+          try { runtimeError = chrome.runtime?.lastError; } catch (err) { runtimeError = err; }
           if (runtimeError) {
             reject(new Error(runtimeError.message || String(runtimeError)));
             return;
@@ -42,6 +53,10 @@
       const response = await sendRuntime({ type: 'PING' });
       if (response?.ok) window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
     } catch (err) {
+      if (isStaleContextError(err)) {
+        postStaleContext();
+        return;
+      }
       console.warn('[LiveFinder] bridge not ready', err);
     }
   }
@@ -57,7 +72,11 @@
         if (!response?.ok) throw new Error(response?.error || 'Background rejected submission');
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORED' }, '*');
       } catch (err) {
-        console.error('[LiveFinder] Could not store pending Nero submission', err);
+        if (isStaleContextError(err)) {
+          postStaleContext();
+          return;
+        }
+        console.warn('[LiveFinder] Could not store pending Nero submission', err);
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORE_FAILED', error: String(err?.message || err) }, '*');
       }
       return;
@@ -68,6 +87,10 @@
         const response = await sendRuntime({ type: 'GET_NERO_STATUS' });
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS', queue: response?.queue || null, result: response?.result || null }, '*');
       } catch (err) {
+        if (isStaleContextError(err)) {
+          postStaleContext();
+          return;
+        }
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS_FAILED', error: String(err?.message || err) }, '*');
       }
       return;
