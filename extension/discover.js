@@ -49,17 +49,37 @@
   function candidateElements() {
     const seen = new Set();
     const out = [];
-    const push = (el, raw) => {
-      if (!el || !raw) return;
-      const key = `${raw}::${out.length}`;
+    const push = (el, raw, source) => {
+      const value = String(raw || '').trim();
+      if (!value) return;
+      const key = `${source}:${value}`;
       if (seen.has(key)) return;
       seen.add(key);
-      out.push({ el, raw });
+      out.push({ el, raw: value, source });
     };
 
-    for (const a of document.querySelectorAll('a[href]')) push(a, a.href || a.getAttribute('href'));
-    for (const el of document.querySelectorAll('[data-href]')) push(el, el.getAttribute('data-href'));
-    for (const el of document.querySelectorAll('[data-url]')) push(el, el.getAttribute('data-url'));
+    const attrs = ['href', 'data-href', 'data-url', 'data-to', 'to'];
+    for (const attr of attrs) {
+      for (const el of document.querySelectorAll(`[${attr}]`)) {
+        const raw = attr === 'href' && el.href ? el.href : el.getAttribute(attr);
+        push(el, raw, attr);
+      }
+    }
+
+    // React apps sometimes serialize route URLs into the page before/without
+    // rendering a clickable anchor. Recover Nero URLs and creator live routes
+    // from the rendered HTML as a fallback. The shared parser still rejects
+    // reserved site routes such as /careers and /games.
+    const html = document.documentElement?.innerHTML || '';
+    const absolute = html.match(/https?:\\?\/\\?\/(?:www\\?\.)?nero\\?\.fan\\?\/[^"'<>\\\s]+/gi) || [];
+    for (const raw of absolute) push(document.body, raw.replace(/\\\//g, '/').replace(/\\u002F/gi, '/'), 'html-absolute');
+
+    const creatorRoutes = html.match(/["']\\?\/[a-z0-9._-]{2,100}\\?\/(?:live|submit|submission|review)(?:\\?\/[^"'<>\\\s]*)?/gi) || [];
+    for (const raw of creatorRoutes) {
+      const clean = raw.replace(/^["']/, '').replace(/\\\//g, '/').replace(/\\u002F/gi, '/');
+      push(document.body, clean, 'html-route');
+    }
+
     return out;
   }
 
@@ -67,20 +87,22 @@
     const found = new Map();
     const candidates = candidateElements();
     let validCandidates = 0;
+    const sourceCounts = {};
 
     for (const candidate of candidates) {
       const parsed = parseReviewerUrl(candidate.raw, location.origin);
       if (!parsed) continue;
       validCandidates += 1;
+      sourceCounts[candidate.source] = (sourceCounts[candidate.source] || 0) + 1;
 
-      const card = nearestCard(candidate.el);
+      const card = candidate.el === document.body ? document.body : nearestCard(candidate.el);
       const text = String(card?.innerText || card?.textContent || candidate.el?.innerText || '');
       const classified = classify(text, parsed.livePath);
       const existing = found.get(parsed.handle.toLowerCase());
       const rank = { live: 4, open: 3, closed: 2, unknown: 1 };
       const item = {
         handle: parsed.handle,
-        displayName: extractDisplayName(card, parsed.handle),
+        displayName: candidate.el === document.body ? `@${parsed.handle}` : extractDisplayName(card, parsed.handle),
         neroUrl: parsed.targetUrl,
         profileUrl: parsed.profileUrl,
         status: classified.status,
@@ -95,7 +117,7 @@
       return rank[a.status] - rank[b.status] || a.handle.localeCompare(b.handle);
     });
 
-    return { items, diagnostics: { candidates: candidates.length, validCandidates, uniqueReviewers: items.length } };
+    return { items, diagnostics: { candidates: candidates.length, validCandidates, uniqueReviewers: items.length, sourceCounts } };
   }
 
   let lastSignature = '';
@@ -113,7 +135,7 @@
 
     try {
       const response = await chrome.runtime.sendMessage({ type: 'SAVE_NERO_POOL', items, scrapedAt: Date.now(), diagnostics });
-      if (response?.ok) {
+      if (response?.ok && response.count > 0) {
         saves += 1;
         console.log(`[LiveFinder] Discover saved ${response.count}/${items.length} reviewers`, diagnostics);
       } else {
@@ -126,7 +148,7 @@
 
   scanAndSave();
   const observer = new MutationObserver(() => scanAndSave());
-  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href', 'data-href', 'data-url'] });
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href', 'data-href', 'data-url', 'data-to', 'to'] });
   const timer = setInterval(scanAndSave, 1000);
 
   setTimeout(() => {
@@ -135,5 +157,5 @@
     if (!saves) {
       console.warn('[LiveFinder] Discover scan found no reviewer pool. Diagnostics:', lastDiagnostics, 'URL:', location.href);
     }
-  }, 25000);
+  }, 30000);
 })();
