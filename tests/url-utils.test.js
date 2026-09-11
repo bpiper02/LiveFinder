@@ -29,6 +29,9 @@ const bad = [
   'https://www.nero.fan/share.png',
   'https://www.nero.fan/neronowordblack.png',
   'https://www.nero.fan/nerowithborder.png',
+  'https://www.nero.fan/uploads/cover.png',
+  'https://www.nero.fan/public/images/card.jpg',
+  'https://www.nero.fan/somehandle/live/card.webp',
   'https://www.nero.fan/favicon.ico',
   'https://example.com/vivacjaudio/live',
   'https://www.nero.fan/a/live'
