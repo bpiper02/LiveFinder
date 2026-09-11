@@ -13,7 +13,7 @@
   <div>
     <p class="eyebrow">ARTIST SUBMISSION ROUTER · NERO MVP</p>
     <h1>Put the song where the listeners already are.</h1>
-    <p class="lede">Save your track once. Add a Nero link. LiveFinder walks the free submission flow and records the queue result.</p>
+    <p class="lede">Save your track once. Discover Nero review opportunities. LiveFinder walks the free submission flow and records the queue result.</p>
   </div>
   <span class="pill">LOCAL-FIRST · $0</span>
 </header>
@@ -33,7 +33,7 @@
   </article>
 
   <article class="panel">
-    <div class="sectionTitle"><span>02</span><h2>Nero reviewers</h2></div>
+    <div class="sectionTitle"><span>02</span><h2>Saved reviewers</h2></div>
     <form id="reviewerForm" class="stack">
       <input id="neroUrl" placeholder="Paste nero.fan reviewer link" required>
       <button type="submit">Add reviewer</button>
@@ -43,9 +43,25 @@
   </article>
 </section>
 
+<section class="panel discovery">
+  <div class="sectionTitle splitTitle">
+    <div><span>03</span><h2>Nero opportunity pool</h2></div>
+    <button id="refreshPool" class="ghost" type="button">Refresh Nero pool</button>
+  </div>
+  <div class="poolMeta">
+    <p class="hint">LiveFinder scans Nero Discover in your browser, then sorts reviewers by what the page visibly exposes.</p>
+    <span id="poolStatus" class="poolStatus">No scan yet.</span>
+  </div>
+  <div class="poolGrid">
+    <div class="poolColumn"><h3><span class="dot liveDot"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div>
+    <div class="poolColumn"><h3><span class="dot openDot"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div>
+    <div class="poolColumn"><h3><span class="dot otherDot"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div>
+  </div>
+</section>
+
 <section class="panel submissions">
   <div class="sectionTitle splitTitle">
-    <div><span>03</span><h2>Submission history</h2></div>
+    <div><span>04</span><h2>Submission history</h2></div>
     <button id="clearHistory" class="ghost danger" type="button">Clear history</button>
   </div>
   <div class="table">
