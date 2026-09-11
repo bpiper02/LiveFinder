@@ -39,6 +39,16 @@ function reviewerLabel(url){
   }catch{return 'Nero reviewer';}
 }
 
+function canonicalReviewerLabel(url,fallback=''){
+  const bad=new Set(['','@live','@submit','@submission','@review','live','submit','submission','review']);
+  const saved=state.reviewers.find(r=>{
+    try{return normalizeNeroUrl(r.neroUrl)===normalizeNeroUrl(url);}catch{return false;}
+  });
+  if(saved?.label&&!bad.has(String(saved.label).toLowerCase()))return saved.label;
+  if(fallback&&!bad.has(String(fallback).toLowerCase()))return fallback;
+  return reviewerLabel(url);
+}
+
 function migrateState(){
   const badLegacyLabels=new Set(['@live','@submit','@submission','@review']);
   state.reviewers=state.reviewers.map(r=>({
@@ -50,7 +60,7 @@ function migrateState(){
   state.submissions=state.submissions.map(s=>({
     id:s.id||uid(),
     reviewerUrl:s.reviewerUrl||'',
-    reviewer:s.reviewer||reviewerLabel(s.reviewerUrl),
+    reviewer:canonicalReviewerLabel(s.reviewerUrl,s.reviewer),
     songId:s.songId||'',
     song:s.song||'',
     status:s.status||'unknown',
@@ -94,8 +104,12 @@ function render(){
   $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>`
     <div class="card reviewer"><div><strong>${esc(r.label||reviewerLabel(r.neroUrl))}</strong><small>${esc(r.neroUrl)}</small></div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${r.id}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${s.id}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${r.id}">Delete</button></div></div>`).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
 
-  $('submissionRows').innerHTML=state.submissions.length?state.submissions.map(s=>`
-    <div class="tr"><span title="${esc(s.reviewerUrl)}">${esc(s.reviewer||reviewerLabel(s.reviewerUrl))}</span><span>${esc(s.song)}</span><span class="status">${esc(statusText(s))}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${s.id}">Delete</button></span></div>`).join(''):'<p class="empty">Nothing submitted yet.</p>';
+  $('submissionRows').innerHTML=state.submissions.length?state.submissions.map(s=>{
+    const label=canonicalReviewerLabel(s.reviewerUrl,s.reviewer);
+    const href=(()=>{try{return normalizeNeroUrl(s.reviewerUrl);}catch{return ''}})();
+    const reviewerCell=href?`<a class="historyReviewer" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(href)}</small></a>`:`<span>${esc(label)}</span>`;
+    return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="status">${esc(statusText(s))}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${s.id}">Delete</button></span></div>`;
+  }).join(''):'<p class="empty">Nothing submitted yet.</p>';
 
   document.querySelectorAll('select[data-reviewer]').forEach(el=>el.onchange=()=>submitToReviewer(el.dataset.reviewer,el.value));
   document.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>handleAction(btn.dataset.action,btn.dataset.id));
