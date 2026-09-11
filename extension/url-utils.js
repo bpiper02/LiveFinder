@@ -5,6 +5,7 @@
     'features','feature','faq','contact','blog','press','legal','cookies','settings','account','profile','dashboard',
     'creators','artists','teams','business','enterprise','community','help','download','app','api','status',
     '_next','assets','static','images','image','img','fonts','font','icons','icon','media','share',
+    'uploads','upload','public','cdn','storage','files','file','resources','resource',
     'favicon.ico','robots.txt','sitemap.xml'
   ]);
   const ASSET_EXT_RE = /\.(?:png|jpe?g|webp|gif|svg|ico|avif|bmp|css|js|mjs|map|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|json|xml|txt)$/i;
@@ -18,6 +19,7 @@
 
       const parts = url.pathname.split('/').filter(Boolean).map(part => decodeURIComponent(part));
       if (!parts.length) return null;
+      if (parts.some(part => ASSET_EXT_RE.test(part))) return null;
 
       const handle = parts[0].replace(/^@/, '');
       const lower = handle.toLowerCase();
