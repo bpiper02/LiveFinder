@@ -1,5 +1,28 @@
 const DB_NAME = 'livefinder-extension';
 const STORE_NAME = 'kv';
+const RESERVED_NERO_ROUTES = new Set([
+  'discover','learn','docs','home','login','signup','terms','privacy','support','pricing','about','create',
+  'careers','career','jobs','games','game','partner-program','partners','partner','company','product','products',
+  'features','feature','faq','contact','blog','press','legal','cookies','settings','account','profile','dashboard',
+  'creators','artists','teams','business','enterprise','community','help','download','app','api','status'
+]);
+const ALLOWED_SESSION_SUFFIXES = new Set(['live','submit','submission','review']);
+
+function validReviewerUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return false;
+    const parts = url.pathname.split('/').filter(Boolean).map(p => decodeURIComponent(p));
+    if (!parts.length) return false;
+    if (RESERVED_NERO_ROUTES.has(parts[0].toLowerCase())) return false;
+    if (!/^[a-z0-9._-]{2,80}$/i.test(parts[0])) return false;
+    if (parts.length > 2) return false;
+    if (parts.length === 2 && !ALLOWED_SESSION_SUFFIXES.has(parts[1].toLowerCase())) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -85,14 +108,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
       if (message.type === 'SAVE_NERO_POOL') {
-        const items = Array.isArray(message.items) ? message.items : [];
+        const rawItems = Array.isArray(message.items) ? message.items : [];
+        const items = rawItems.filter(item => validReviewerUrl(item?.neroUrl));
         await put('neroPool', { items, scrapedAt: Number(message.scrapedAt || Date.now()) });
-        sendResponse({ ok: true, count: items.length });
+        sendResponse({ ok: true, count: items.length, rejected: rawItems.length - items.length });
         return;
       }
       if (message.type === 'GET_NERO_POOL') {
         const pool = await get('neroPool');
-        sendResponse({ ok: true, pool: pool || { items: [], scrapedAt: 0 } });
+        const items = Array.isArray(pool?.items) ? pool.items.filter(item => validReviewerUrl(item?.neroUrl)) : [];
+        sendResponse({ ok: true, pool: { items, scrapedAt: Number(pool?.scrapedAt || 0) } });
         return;
       }
       sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
