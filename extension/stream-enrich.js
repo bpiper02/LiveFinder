@@ -63,7 +63,7 @@
 
   function normalizeStream(raw, isLive) {
     let url;
-    try { url = new URL(String(raw || '')); } catch { return null; }
+    try { url = new URL(String(raw || '').replace(/\\u002F/gi, '/').replace(/\\\//g, '/')); } catch { return null; }
     const platform = platformFor(url);
     if (!platform) return null;
     url.hash = '';
@@ -102,6 +102,7 @@
     const text = norm(card.innerText || card.textContent || '');
     const isLive = /(^|\s)live($|\s)|live now|currently live|watch live|on air/.test(text);
     const candidates = [];
+
     for (const anchor of card.querySelectorAll('a[href]')) {
       const candidate = normalizeStream(anchor.href, isLive);
       if (!candidate) continue;
@@ -109,6 +110,14 @@
       if (label.includes(candidate.streamPlatform.toLowerCase())) candidate.score += 15;
       candidates.push(candidate);
     }
+
+    const html = String(card.outerHTML || '');
+    const urls = html.match(/https?:\\?\/\\?\/[^"'<>\s]+/gi) || [];
+    for (const raw of urls) {
+      const candidate = normalizeStream(raw, isLive);
+      if (candidate) candidates.push(candidate);
+    }
+
     candidates.sort((a, b) => b.score - a.score);
     return candidates[0] || null;
   }
