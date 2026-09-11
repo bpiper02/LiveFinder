@@ -1,35 +1,67 @@
 (() => {
-  const SOURCE = 'livefinder-web';
+  const WEB_SOURCE = 'livefinder-web';
+  const EXT_SOURCE = 'livefinder-extension';
 
-  window.addEventListener('message', (event) => {
-    if (event.source !== window) return;
-    const message = event.data;
-    if (!message || message.source !== SOURCE || message.type !== 'STORE_NERO_SUBMISSION') return;
+  function sendRuntime(message, timeoutMs = 2500) {
+    return new Promise((resolve, reject) => {
+      if (!globalThis.chrome?.runtime?.sendMessage) {
+        reject(new Error('Extension runtime unavailable. Reload the LiveFinder extension, then refresh this tab.'));
+        return;
+      }
 
-    try {
-      chrome.runtime.sendMessage(
-        { type: 'STORE_NERO_SUBMISSION', payload: message.payload },
-        (response) => {
-          const runtimeError = chrome.runtime.lastError;
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error('Extension background did not respond in time.'));
+      }, timeoutMs);
+
+      try {
+        chrome.runtime.sendMessage(message, response => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          const runtimeError = chrome.runtime?.lastError;
           if (runtimeError) {
-            console.error('[LiveFinder] Could not store pending Nero submission', runtimeError);
-            window.postMessage({ source: 'livefinder-extension', type: 'NERO_SUBMISSION_STORE_FAILED' }, '*');
+            reject(new Error(runtimeError.message || String(runtimeError)));
             return;
           }
+          resolve(response);
+        });
+      } catch (err) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(err);
+      }
+    });
+  }
 
-          if (response?.ok) {
-            window.postMessage({ source: 'livefinder-extension', type: 'NERO_SUBMISSION_STORED' }, '*');
-          } else {
-            console.error('[LiveFinder] Could not store pending Nero submission', response?.error || 'Unknown background error');
-            window.postMessage({ source: 'livefinder-extension', type: 'NERO_SUBMISSION_STORE_FAILED' }, '*');
-          }
-        }
-      );
+  async function announceReady() {
+    try {
+      const response = await sendRuntime({ type: 'PING' });
+      if (response?.ok) {
+        window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
+      }
+    } catch (err) {
+      console.warn('[LiveFinder] bridge not ready', err);
+    }
+  }
+
+  window.addEventListener('message', async event => {
+    if (event.source !== window) return;
+    const message = event.data;
+    if (!message || message.source !== WEB_SOURCE || message.type !== 'STORE_NERO_SUBMISSION') return;
+
+    try {
+      const response = await sendRuntime({ type: 'STORE_NERO_SUBMISSION', payload: message.payload });
+      if (!response?.ok) throw new Error(response?.error || 'Background rejected submission');
+      window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORED' }, '*');
     } catch (err) {
       console.error('[LiveFinder] Could not store pending Nero submission', err);
-      window.postMessage({ source: 'livefinder-extension', type: 'NERO_SUBMISSION_STORE_FAILED' }, '*');
+      window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORE_FAILED', error: String(err?.message || err) }, '*');
     }
   });
 
-  window.postMessage({ source: 'livefinder-extension', type: 'BRIDGE_READY' }, '*');
+  announceReady();
 })();
