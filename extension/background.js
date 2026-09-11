@@ -226,6 +226,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
         return;
       }
+      if (message.type === 'SYNC_SONG_LIBRARY') {
+        const songs = (Array.isArray(message.songs) ? message.songs : []).map(song => ({
+          id: String(song?.id || ''),
+          artist: String(song?.artist || ''),
+          title: String(song?.title || ''),
+          email: String(song?.email || ''),
+          instagram: String(song?.instagram || ''),
+          songUrl: String(song?.songUrl || ''),
+          note: String(song?.note || '')
+        })).filter(song => song.id && song.artist && song.title);
+        const syncedAt = Number(message.syncedAt || Date.now());
+        await put('songLibrary', { songs, syncedAt });
+        sendResponse({ ok: true, count: songs.length, syncedAt });
+        return;
+      }
+      if (message.type === 'GET_SONG_LIBRARY') {
+        const library = await get('songLibrary');
+        sendResponse({ ok: true, library: library || { songs: [], syncedAt: 0 } });
+        return;
+      }
       if (message.type === 'STORE_NERO_SUBMISSION') {
         const payload = message.payload;
         if (!payload || payload.source !== 'livefinder' || payload.type !== 'PREPARE_NERO_SUBMISSION') throw new Error('Invalid LiveFinder submission payload');
