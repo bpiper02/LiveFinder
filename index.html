@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Nero Router</title>
+<title>LiveFinder</title>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,7 +12,7 @@
   <div>
     <p class="eyebrow">ARTIST SUBMISSION ROUTER · NERO MVP</p>
     <h1>Put the song where the listeners already are.</h1>
-    <p class="lede">Save your track once. Open a Nero reviewer. The companion extension fills the submission form for you.</p>
+    <p class="lede">Save your track once. Pick a Nero reviewer. LiveFinder walks the free submission flow for you.</p>
   </div>
   <span class="pill">LOCAL-FIRST · $0</span>
 </header>
@@ -22,6 +22,7 @@
     <form id="songForm" class="stack">
       <div class="row"><input id="artist" placeholder="Artist" required><input id="title" placeholder="Track title" required></div>
       <input id="email" type="email" placeholder="Submission email" required>
+      <input id="instagram" placeholder="Instagram handle (optional)">
       <input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required>
       <textarea id="note" placeholder="Optional reviewer note / question"></textarea>
       <button>Add song</button>
@@ -42,7 +43,7 @@
   <div class="sectionTitle"><span>03</span><h2>Submission log</h2></div>
   <div class="table"><div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span></div><div id="submissionRows"></div></div>
 </section>
-<footer>Next: automatic Nero discovery + live/open/free filters + queue status.</footer>
+<footer>Nero MVP: free link submission workflow first. Paid skips are never selected automatically.</footer>
 </main>
 <script src="app.js"></script>
 </body>
