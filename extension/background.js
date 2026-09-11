@@ -84,6 +84,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         sendResponse({ ok: true, queue: queue || null, result: result || null });
         return;
       }
+      if (message.type === 'SAVE_NERO_POOL') {
+        const items = Array.isArray(message.items) ? message.items : [];
+        await put('neroPool', { items, scrapedAt: Number(message.scrapedAt || Date.now()) });
+        sendResponse({ ok: true, count: items.length });
+        return;
+      }
+      if (message.type === 'GET_NERO_POOL') {
+        const pool = await get('neroPool');
+        sendResponse({ ok: true, pool: pool || { items: [], scrapedAt: 0 } });
+        return;
+      }
       sendResponse({ ok: false, error: `Unknown message type: ${message.type}` });
     } catch (err) {
       console.error('[LiveFinder background]', err);
