@@ -103,6 +103,16 @@
       return;
     }
 
+    if (message.type === 'REQUEST_DASHBOARD_RUNS') {
+      await relay(message, { type: 'GET_DASHBOARD_RUNS' }, 'DASHBOARD_RUNS');
+      return;
+    }
+
+    if (message.type === 'ACK_DASHBOARD_RUNS') {
+      await relay(message, { type: 'ACK_DASHBOARD_RUNS', ids: Array.isArray(message.ids) ? message.ids : [] }, 'DASHBOARD_RUNS_ACKED');
+      return;
+    }
+
     if (message.type === 'STORE_NERO_SUBMISSION') {
       try {
         const response = await sendRuntime({ type: 'STORE_NERO_SUBMISSION', payload: message.payload });
