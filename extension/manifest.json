@@ -1,11 +1,21 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autofill Nero music review submission forms from LiveFinder.",
   "permissions": ["storage"],
-  "host_permissions": ["https://www.nero.fan/*", "https://nero.fan/*"],
+  "host_permissions": [
+    "https://www.nero.fan/*",
+    "https://nero.fan/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    },
     {
       "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
       "js": ["nero.js"],
