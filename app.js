@@ -16,13 +16,32 @@ window.addEventListener('message',event=>{
 });
 
 function render(){
-  $('songs').innerHTML=state.songs.length?state.songs.map(s=>`<div class="card"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small></div>`).join(''):'<p class="empty">No songs saved yet.</p>';
+  $('songs').innerHTML=state.songs.length?state.songs.map(s=>`<div class="card"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div>`).join(''):'<p class="empty">No songs saved yet.</p>';
   $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>`<div class="card reviewer"><div><strong>${esc(r.name)}</strong><small>${esc(r.neroUrl)}</small></div>${state.songs.length?`<select data-reviewer="${r.id}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${s.id}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}</div>`).join(''):'<p class="empty">Add any Nero creator URL to test the flow.</p>';
   $('submissionRows').innerHTML=state.submissions.length?state.submissions.map(s=>`<div class="tr"><span>${esc(s.reviewer)}</span><span>${esc(s.song)}</span><span class="status">${esc(s.status)}</span><span>${esc(s.createdAt)}</span></div>`).join(''):'<p class="empty">Nothing submitted yet.</p>';
   document.querySelectorAll('select[data-reviewer]').forEach(el=>el.onchange=()=>submitToReviewer(el.dataset.reviewer,el.value));
 }
 
-$('songForm').onsubmit=e=>{e.preventDefault();state.songs.push({id:uid(),artist:$('artist').value.trim(),title:$('title').value.trim(),email:$('email').value.trim(),songUrl:$('songUrl').value.trim(),note:$('note').value.trim()});save();const keep=$('email').value;$('songForm').reset();$('email').value=keep;render();};
+$('songForm').onsubmit=e=>{
+  e.preventDefault();
+  state.songs.push({
+    id:uid(),
+    artist:$('artist').value.trim(),
+    title:$('title').value.trim(),
+    email:$('email').value.trim(),
+    instagram:$('instagram').value.trim(),
+    songUrl:$('songUrl').value.trim(),
+    note:$('note').value.trim()
+  });
+  save();
+  const keepEmail=$('email').value;
+  const keepInstagram=$('instagram').value;
+  $('songForm').reset();
+  $('email').value=keepEmail;
+  $('instagram').value=keepInstagram;
+  render();
+};
+
 $('reviewerForm').onsubmit=e=>{e.preventDefault();let url=$('neroUrl').value.trim();if(!/^https?:\/\//i.test(url))url='https://'+url;state.reviewers.push({id:uid(),name:$('reviewerName').value.trim(),neroUrl:url});save();$('reviewerForm').reset();render();};
 
 function submitToReviewer(reviewerId,songId){
@@ -37,7 +56,7 @@ function submitToReviewer(reviewerId,songId){
     if(msg?.source!=='livefinder-extension')return;
     if(msg.type==='NERO_SUBMISSION_STORED'){
       window.removeEventListener('message',onAck);
-      state.submissions.unshift({id:uid(),reviewer:reviewer.name,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),status:'opened'});save();render();
+      state.submissions.unshift({id:uid(),reviewer:reviewer.name,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),status:'automation started'});save();render();
       window.open(base,'_blank','noopener,noreferrer');
     }
     if(msg.type==='NERO_SUBMISSION_STORE_FAILED'){
