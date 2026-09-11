@@ -17,6 +17,7 @@ function normalizeNeroUrl(input){
   if(!/^https?:\/\//i.test(url))url='https://'+url;
   const parsed=new URL(url);
   if(!/(^|\.)nero\.fan$/i.test(parsed.hostname))throw new Error('Not a Nero URL');
+  parsed.hostname='www.nero.fan';
   parsed.hash='';
   parsed.search='';
   parsed.pathname=parsed.pathname.replace(/\/+$/,'')||'/';
@@ -27,7 +28,10 @@ function reviewerLabel(url){
   try{
     const parsed=new URL(url);
     const parts=parsed.pathname.split('/').filter(Boolean);
-    const slug=decodeURIComponent(parts.at(-1)||'nero');
+    const suffixes=new Set(['live','submit','submission','review']);
+    let slug=parts.at(-1)||'nero';
+    if(suffixes.has(slug.toLowerCase())&&parts.length>1)slug=parts.at(-2);
+    slug=decodeURIComponent(slug);
     return slug.startsWith('@')?slug:`@${slug}`;
   }catch{return 'Nero reviewer';}
 }
@@ -123,7 +127,7 @@ $('reviewerForm').onsubmit=e=>{
     return;
   }
 
-  if(state.reviewers.some(r=>r.neroUrl.toLowerCase()===url.toLowerCase())){
+  if(state.reviewers.some(r=>normalizeNeroUrl(r.neroUrl).toLowerCase()===url.toLowerCase())){
     alert('That Nero reviewer is already in your list.');
     return;
   }
