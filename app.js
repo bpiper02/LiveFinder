@@ -192,9 +192,11 @@ function findMatchingSubmission(data){
   if(!data)return null;
   const reviewerUrl=data.reviewer?.neroUrl||'';
   const songId=data.song?.id||'';
+  const eventAt=data.completedAt||data.capturedAt||0;
   return state.submissions.find(s=>
     (!reviewerUrl||s.reviewerUrl===reviewerUrl) &&
-    (!songId||s.songId===songId)
+    (!songId||s.songId===songId) &&
+    (!eventAt||s.createdAtMs<=eventAt)
   )||null;
 }
 
