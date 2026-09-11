@@ -4,6 +4,7 @@
   const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
   let poolItems = [];
   let scheduled = false;
+  let poolRefreshPending = false;
 
   function readState() {
     try {
@@ -47,8 +48,12 @@
   }
 
   function addStreamLink(container, item) {
-    if (!container || !item?.streamUrl) return;
+    if (!container) return;
     let link = container.querySelector(':scope > .livefinderStreamLink');
+    if (!item?.streamUrl) {
+      link?.remove();
+      return;
+    }
     if (!link) {
       link = document.createElement('a');
       link.className = 'livefinderStreamLink';
@@ -74,9 +79,18 @@
     return smalls.map(el => el.textContent.trim()).find(text => /^https?:\/\/(?:www\.)?nero\.fan\//i.test(text)) || '';
   }
 
+  function existingSubmittedCard(column, key) {
+    return [...column.querySelectorAll('.poolCard')].find(card => card.dataset.livefinderReviewerKey === key) || null;
+  }
+
   function decoratePool() {
     const submittedColumn = document.getElementById('poolSubmitted');
     if (!submittedColumn) return;
+
+    if (poolRefreshPending) {
+      submittedColumn.querySelectorAll('.poolCard').forEach(card => card.remove());
+      poolRefreshPending = false;
+    }
 
     for (const id of ['poolLive', 'poolOpen', 'poolOther']) {
       const column = document.getElementById(id);
@@ -84,12 +98,18 @@
 
       for (const card of [...column.querySelectorAll('.poolCard')]) {
         const url = neroUrlFromPoolCard(card);
+        const key = reviewerKey(url);
         const item = poolItemForReviewer(url);
-        if (item) addStreamLink(card, item);
+        addStreamLink(card, item);
 
+        const oldSubmitted = key ? existingSubmittedCard(submittedColumn, key) : null;
         const submission = currentSubmissionFor(url);
-        if (!submission) continue;
+        if (!submission) {
+          oldSubmitted?.remove();
+          continue;
+        }
 
+        if (oldSubmitted && oldSubmitted !== card) oldSubmitted.remove();
         const select = card.querySelector('select[data-pool-url]');
         if (select && !select.disabled) {
           select.disabled = true;
@@ -99,6 +119,7 @@
         const status = submission.status === 'submitted' ? 'submitted' : submission.status;
         if (chip && chip.textContent !== status) chip.textContent = status;
         card.dataset.livefinderSubmitted = '1';
+        card.dataset.livefinderReviewerKey = key;
         submittedColumn.appendChild(card);
       }
     }
@@ -120,10 +141,9 @@
     for (const row of rows.querySelectorAll('.tr')) {
       const reviewer = row.querySelector('.historyReviewer');
       if (!reviewer?.href) continue;
-      const item = poolItemForReviewer(reviewer.href);
-      if (!item?.streamUrl) continue;
       const cell = reviewer.parentElement;
-      if (cell) addStreamLink(cell, item);
+      if (!cell) continue;
+      addStreamLink(cell, poolItemForReviewer(reviewer.href));
     }
   }
 
@@ -145,6 +165,7 @@
     if (!message || message.source !== EXT_SOURCE) return;
     if (message.type === 'NERO_POOL') {
       poolItems = Array.isArray(message.pool?.items) ? message.pool.items : [];
+      poolRefreshPending = true;
       schedule();
     }
     if (message.type === 'NERO_STATUS' || message.type === 'DASHBOARD_RUNS') schedule();
