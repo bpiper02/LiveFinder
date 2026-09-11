@@ -64,6 +64,51 @@ async function remove(key) {
   });
 }
 
+async function getDashboardRuns() {
+  const runs = await get('dashboardRuns');
+  return Array.isArray(runs) ? runs : [];
+}
+
+async function saveDashboardRuns(runs) {
+  await put('dashboardRuns', runs.slice(0, 50));
+}
+
+function dashboardRunFromPayload(payload) {
+  const createdAtMs = Number(payload?.createdAt || Date.now());
+  return {
+    id: String(payload?.runId || ''),
+    reviewerUrl: String(payload?.reviewer?.neroUrl || ''),
+    reviewer: reviewerLabel(payload?.reviewer),
+    songId: String(payload?.song?.id || ''),
+    song: `${String(payload?.song?.artist || '').trim()} — ${String(payload?.song?.title || '').trim()}`.replace(/^\s*—\s*|\s*—\s*$/g, ''),
+    status: 'automation started',
+    queueAhead: null,
+    createdAtMs,
+    updatedAt: Date.now()
+  };
+}
+
+async function addDashboardRun(payload) {
+  const run = dashboardRunFromPayload(payload);
+  if (!run.id || !run.reviewerUrl) return;
+  const runs = await getDashboardRuns();
+  const next = runs.filter(item => item.id !== run.id);
+  next.unshift(run);
+  await saveDashboardRuns(next);
+}
+
+async function updateDashboardRun(value, status) {
+  const runId = String(value?.runId || '');
+  if (!runId) return;
+  const runs = await getDashboardRuns();
+  const run = runs.find(item => item.id === runId);
+  if (!run) return;
+  run.status = status;
+  if (Number.isFinite(value?.ahead)) run.queueAhead = Number(value.ahead);
+  run.updatedAt = Date.now();
+  await saveDashboardRuns(runs);
+}
+
 async function getAlertSettings() {
   const value = await get('queueAlertSettings');
   return { enabled: value?.enabled !== false };
@@ -250,7 +295,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const payload = message.payload;
         if (!payload || payload.source !== 'livefinder' || payload.type !== 'PREPARE_NERO_SUBMISSION') throw new Error('Invalid LiveFinder submission payload');
         await put('pendingRun', { payload, storedAt: Date.now() });
+        if (payload.origin === 'sidepanel') await addDashboardRun(payload);
         sendResponse({ ok: true });
+        return;
+      }
+      if (message.type === 'GET_DASHBOARD_RUNS') {
+        sendResponse({ ok: true, runs: await getDashboardRuns() });
+        return;
+      }
+      if (message.type === 'ACK_DASHBOARD_RUNS') {
+        const ids = new Set((Array.isArray(message.ids) ? message.ids : []).map(String));
+        const runs = await getDashboardRuns();
+        const next = runs.filter(run => !ids.has(String(run.id)));
+        if (next.length !== runs.length) await saveDashboardRuns(next);
+        sendResponse({ ok: true, remaining: next.length });
         return;
       }
       if (message.type === 'GET_NERO_SUBMISSION') {
@@ -265,12 +323,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === 'SAVE_NERO_QUEUE') {
         await put('lastQueue', message.value);
         await upsertWatchFromQueue(message.value);
+        await updateDashboardRun(message.value, 'queued');
         sendResponse({ ok: true });
         return;
       }
       if (message.type === 'SAVE_NERO_RESULT') {
         await put('lastResult', message.value);
         await upsertWatchFromQueue(message.value);
+        await updateDashboardRun(message.value, 'submitted');
         sendResponse({ ok: true });
         return;
       }
