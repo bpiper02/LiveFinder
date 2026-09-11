@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "qa": "node --check app.js && node --check dashboard-sync.js && node --check extension/url-utils.js && node --check extension/background.js && node --check extension/bridge.js && node --check extension/nero.js && node --check extension/discover-main.js && node --check extension/discover.js && node --check extension/queue-monitor.js && node tests/url-utils.test.js"
+    "qa": "node --check app.js && node --check dashboard-sync.js && node --check extension/url-utils.js && node --check extension/autofill-core.js && node --check extension/assist.js && node --check extension/background.js && node --check extension/bridge.js && node --check extension/nero.js && node --check extension/discover-main.js && node --check extension/discover.js && node --check extension/queue-monitor.js && node tests/url-utils.test.js && node tests/autofill-core.test.js"
   },
   "devDependencies": {
     "vite": "latest"
