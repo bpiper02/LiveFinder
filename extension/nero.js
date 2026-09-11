@@ -1,20 +1,4 @@
 (() => {
-  const PREFIX = '#nr=';
-
-  function decodePayload() {
-    if (!location.hash.startsWith(PREFIX)) return null;
-    try {
-      const encoded = location.hash.slice(PREFIX.length);
-      const json = decodeURIComponent(escape(atob(encoded)));
-      const payload = JSON.parse(json);
-      if (payload?.source !== 'nero-router' || payload?.type !== 'PREPARE_NERO_SUBMISSION') return null;
-      return payload;
-    } catch (err) {
-      console.error('[LiveFinder] Could not decode payload', err);
-      return null;
-    }
-  }
-
   function textFor(el) {
     const parts = [
       el.name,
@@ -33,7 +17,7 @@
     if (wrappingLabel) parts.push(wrappingLabel.textContent);
 
     const parentText = el.parentElement?.innerText;
-    if (parentText && parentText.length < 180) parts.push(parentText);
+    if (parentText && parentText.length < 220) parts.push(parentText);
 
     return parts.filter(Boolean).join(' ').toLowerCase();
   }
@@ -44,7 +28,7 @@
       : HTMLInputElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
     descriptor?.set?.call(el, value);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur', { bubbles: true }));
   }
@@ -74,11 +58,11 @@
     let filled = 0;
 
     const mappings = [
-      { value: song.artist, hints: ['artist name', 'artist', 'performer'] },
-      { value: song.title, hints: ['song title', 'track title', 'title', 'song name', 'track name'] },
+      { value: song.songUrl, hints: ['song link', 'track link', 'music link', 'spotify', 'soundcloud', 'youtube', 'google drive', 'bandlab', 'url', 'link'] },
+      { value: song.artist, hints: ['artist name', 'artist', 'performer', 'your name', 'name'] },
       { value: song.email, hints: ['email address', 'email', 'e-mail'] },
-      { value: song.songUrl, hints: ['song link', 'track link', 'music link', 'spotify', 'soundcloud', 'youtube', 'url', 'link'] },
-      { value: song.note, hints: ['note', 'message', 'anything else', 'comments', 'description'] }
+      { value: song.title, hints: ['track name', 'track title', 'song title', 'song name', 'title'] },
+      { value: song.note, hints: ['note', 'message', 'anything else', 'comments', 'description', 'question'] }
     ];
 
     for (const mapping of mappings) {
@@ -99,44 +83,83 @@
   }
 
   function showBadge(message) {
-    if (document.getElementById('livefinder-badge')) return;
-    const badge = document.createElement('div');
-    badge.id = 'livefinder-badge';
+    let badge = document.getElementById('livefinder-badge');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = 'livefinder-badge';
+      Object.assign(badge.style, {
+        position: 'fixed',
+        right: '16px',
+        bottom: '16px',
+        zIndex: '2147483647',
+        background: '#111',
+        color: '#fff',
+        padding: '10px 14px',
+        borderRadius: '10px',
+        font: '13px/1.35 system-ui, sans-serif',
+        boxShadow: '0 6px 24px rgba(0,0,0,.25)',
+        maxWidth: '340px'
+      });
+      document.documentElement.appendChild(badge);
+    }
     badge.textContent = message;
-    Object.assign(badge.style, {
-      position: 'fixed',
-      right: '16px',
-      bottom: '16px',
-      zIndex: '2147483647',
-      background: '#111',
-      color: '#fff',
-      padding: '10px 14px',
-      borderRadius: '10px',
-      font: '13px/1.35 system-ui, sans-serif',
-      boxShadow: '0 6px 24px rgba(0,0,0,.25)',
-      maxWidth: '320px'
-    });
-    document.body.appendChild(badge);
   }
 
-  const payload = decodePayload();
-  if (!payload) return;
+  async function getPendingPayload() {
+    try {
+      const result = await chrome.storage.local.get(['pendingNeroSubmission', 'pendingNeroSubmissionStoredAt']);
+      const payload = result.pendingNeroSubmission;
+      const storedAt = result.pendingNeroSubmissionStoredAt || 0;
+      if (!payload) return null;
+      if (Date.now() - storedAt > 5 * 60 * 1000) {
+        await chrome.storage.local.remove(['pendingNeroSubmission', 'pendingNeroSubmissionStoredAt']);
+        return null;
+      }
+      if (payload.source !== 'livefinder' || payload.type !== 'PREPARE_NERO_SUBMISSION') return null;
+      return payload;
+    } catch (err) {
+      console.error('[LiveFinder] Could not read pending submission', err);
+      return null;
+    }
+  }
 
-  let attempts = 0;
-  const tryFill = () => {
-    attempts += 1;
-    if (fillForm(payload)) {
-      observer.disconnect();
+  async function main() {
+    console.log('[LiveFinder] Nero content script loaded on', location.href);
+    const payload = await getPendingPayload();
+    if (!payload) {
+      console.log('[LiveFinder] No pending Nero submission found.');
       return;
     }
-    if (attempts >= 30) {
-      observer.disconnect();
-      showBadge('LiveFinder found the Nero page but could not identify the form fields.');
-      console.warn('[LiveFinder] No matching Nero form fields found.');
-    }
-  };
 
-  const observer = new MutationObserver(() => tryFill());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  tryFill();
+    showBadge('LiveFinder connected. Waiting for Nero form…');
+
+    let attempts = 0;
+    let observer;
+    const tryFill = async () => {
+      attempts += 1;
+      if (fillForm(payload)) {
+        observer?.disconnect();
+        await chrome.storage.local.remove(['pendingNeroSubmission', 'pendingNeroSubmissionStoredAt']);
+        return;
+      }
+      if (attempts >= 60) {
+        observer?.disconnect();
+        showBadge('LiveFinder is connected, but could not identify Nero’s form fields.');
+        console.warn('[LiveFinder] No matching Nero form fields found.');
+      }
+    };
+
+    observer = new MutationObserver(() => tryFill());
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    tryFill();
+    const timer = setInterval(() => {
+      if (attempts >= 60 || document.getElementById('livefinder-badge')?.textContent?.startsWith('LiveFinder filled')) {
+        clearInterval(timer);
+        return;
+      }
+      tryFill();
+    }, 500);
+  }
+
+  main();
 })();
