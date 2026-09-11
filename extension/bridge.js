@@ -11,17 +11,12 @@
   function recoverFromStaleContext() {
     const now = Date.now();
     const last = Number(sessionStorage.getItem(RELOAD_GUARD_KEY) || 0);
-
-    // A content script whose extension was reloaded can still reload the host page.
-    // That gives Chrome a chance to inject a fresh copy from the current extension.
     if (now - last > 5000) {
       sessionStorage.setItem(RELOAD_GUARD_KEY, String(now));
       console.info('[LiveFinder] extension updated; refreshing dashboard once…');
       window.location.reload();
       return;
     }
-
-    // Guard against a pathological reload loop. Surface a clean signal instead.
     window.postMessage({
       source: EXT_SOURCE,
       type: 'NERO_SUBMISSION_STORE_FAILED',
@@ -48,7 +43,6 @@
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-
           let runtimeError = null;
           try { runtimeError = chrome.runtime?.lastError; } catch (err) { runtimeError = err; }
           if (runtimeError) {
@@ -113,6 +107,20 @@
           return;
         }
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_STATUS_FAILED', error: String(err?.message || err) }, '*');
+      }
+      return;
+    }
+
+    if (message.type === 'REQUEST_NERO_POOL') {
+      try {
+        const response = await sendRuntime({ type: 'GET_NERO_POOL' });
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_POOL', pool: response?.pool || { items: [], scrapedAt: 0 } }, '*');
+      } catch (err) {
+        if (isStaleContextError(err)) {
+          recoverFromStaleContext();
+          return;
+        }
+        window.postMessage({ source: EXT_SOURCE, type: 'NERO_POOL_FAILED', error: String(err?.message || err) }, '*');
       }
       return;
     }
