@@ -4,16 +4,7 @@ state.songs ||= []; state.reviewers ||= []; state.submissions ||= [];
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-
-let extensionBridgeReady=false;
-window.addEventListener('message',event=>{
-  if(event.source!==window)return;
-  if(event.data?.source==='livefinder-extension'&&event.data?.type==='BRIDGE_READY'){
-    extensionBridgeReady=true;
-    console.log('[LiveFinder] extension bridge ready');
-  }
-});
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
 
 function render(){
   $('songs').innerHTML=state.songs.length?state.songs.map(s=>`<div class="card"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div>`).join(''):'<p class="empty">No songs saved yet.</p>';
@@ -42,26 +33,47 @@ $('songForm').onsubmit=e=>{
   render();
 };
 
-$('reviewerForm').onsubmit=e=>{e.preventDefault();let url=$('neroUrl').value.trim();if(!/^https?:\/\//i.test(url))url='https://'+url;state.reviewers.push({id:uid(),name:$('reviewerName').value.trim(),neroUrl:url});save();$('reviewerForm').reset();render();};
+$('reviewerForm').onsubmit=e=>{
+  e.preventDefault();
+  let url=$('neroUrl').value.trim();
+  if(!/^https?:\/\//i.test(url))url='https://'+url;
+  try{
+    const parsed=new URL(url);
+    if(!/(^|\.)nero\.fan$/i.test(parsed.hostname)) throw new Error('Not a Nero URL');
+  }catch{
+    alert('Enter a valid nero.fan reviewer URL.');
+    return;
+  }
+  state.reviewers.push({id:uid(),name:$('reviewerName').value.trim(),neroUrl:url});
+  save();$('reviewerForm').reset();render();
+};
 
 function submitToReviewer(reviewerId,songId){
-  const reviewer=state.reviewers.find(r=>r.id===reviewerId),song=state.songs.find(s=>s.id===songId);if(!reviewer||!song)return;
+  const reviewer=state.reviewers.find(r=>r.id===reviewerId);
+  const song=state.songs.find(s=>s.id===songId);
+  if(!reviewer||!song)return;
 
-  const payload={source:'livefinder',type:'PREPARE_NERO_SUBMISSION',song,reviewer,createdAt:Date.now()};
+  const payload={source:'livefinder',type:'PREPARE_NERO_SUBMISSION',runId:uid(),song,reviewer,createdAt:Date.now()};
   const base=reviewer.neroUrl.split('#')[0];
+  let settled=false;
 
+  const cleanup=()=>window.removeEventListener('message',onAck);
   const onAck=event=>{
     if(event.source!==window)return;
     const msg=event.data;
     if(msg?.source!=='livefinder-extension')return;
+
     if(msg.type==='NERO_SUBMISSION_STORED'){
-      window.removeEventListener('message',onAck);
-      state.submissions.unshift({id:uid(),reviewer:reviewer.name,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),status:'automation started'});save();render();
+      settled=true;cleanup();
+      state.submissions.unshift({id:payload.runId,reviewer:reviewer.name,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),status:'automation started'});
+      save();render();
       window.open(base,'_blank','noopener,noreferrer');
+      return;
     }
+
     if(msg.type==='NERO_SUBMISSION_STORE_FAILED'){
-      window.removeEventListener('message',onAck);
-      alert('LiveFinder extension could not store the Nero submission. Reload the extension and try again.');
+      settled=true;cleanup();
+      alert(`LiveFinder extension could not start the submission. ${msg.error||'Reload the extension and refresh this page.'}`);
     }
   };
 
@@ -69,11 +81,10 @@ function submitToReviewer(reviewerId,songId){
   window.postMessage({source:'livefinder-web',type:'STORE_NERO_SUBMISSION',payload},'*');
 
   setTimeout(()=>{
-    window.removeEventListener('message',onAck);
-    if(!extensionBridgeReady){
-      alert('LiveFinder extension bridge was not detected. Reload the extension at chrome://extensions, then refresh this page.');
-    }
-  },1500);
+    if(settled)return;
+    cleanup();
+    alert('LiveFinder extension did not respond. Reload it at chrome://extensions, refresh this page, and try again.');
+  },4000);
 }
 
 render();
