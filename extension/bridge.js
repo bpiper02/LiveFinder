@@ -94,6 +94,15 @@
     const message = event.data;
     if (!message || message.source !== WEB_SOURCE) return;
 
+    if (message.type === 'SYNC_SONG_LIBRARY') {
+      await relay(message, {
+        type: 'SYNC_SONG_LIBRARY',
+        songs: Array.isArray(message.songs) ? message.songs : [],
+        syncedAt: Number(message.syncedAt || Date.now())
+      }, 'SONG_LIBRARY_SYNCED');
+      return;
+    }
+
     if (message.type === 'STORE_NERO_SUBMISSION') {
       try {
         const response = await sendRuntime({ type: 'STORE_NERO_SUBMISSION', payload: message.payload });
