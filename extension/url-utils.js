@@ -4,8 +4,10 @@
     'careers','career','jobs','games','game','partner-program','partners','partner','company','product','products',
     'features','feature','faq','contact','blog','press','legal','cookies','settings','account','profile','dashboard',
     'creators','artists','teams','business','enterprise','community','help','download','app','api','status',
-    '_next','assets','static','images','favicon.ico','robots.txt','sitemap.xml'
+    '_next','assets','static','images','image','img','fonts','font','icons','icon','media','share',
+    'favicon.ico','robots.txt','sitemap.xml'
   ]);
+  const ASSET_EXT_RE = /\.(?:png|jpe?g|webp|gif|svg|ico|avif|bmp|css|js|mjs|map|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|json|xml|txt)$/i;
 
   function parseReviewerUrl(value, base = 'https://www.nero.fan') {
     try {
@@ -18,8 +20,10 @@
       if (!parts.length) return null;
 
       const handle = parts[0].replace(/^@/, '');
+      const lower = handle.toLowerCase();
       if (!handle || handle.length > 100 || /[\s/?#]/.test(handle)) return null;
-      if (RESERVED_NERO_ROUTES.has(handle.toLowerCase())) return null;
+      if (RESERVED_NERO_ROUTES.has(lower)) return null;
+      if (ASSET_EXT_RE.test(lower)) return null;
       if (!/^[a-z0-9._-]{2,100}$/i.test(handle)) return null;
 
       const livePath = parts.slice(1).some(part => part.toLowerCase() === 'live');
