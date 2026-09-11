@@ -71,12 +71,14 @@
     } catch {
       armed = false;
     }
+    return armed;
   }
 
   async function tick() {
-    if (!armed || clicked) return;
+    if (clicked) return;
     const root = addOnRoot();
     if (!root) return;
+    if (!(await arm())) return;
     const button = freeExitButton(root);
     if (!button) return;
 
@@ -88,7 +90,6 @@
   }
 
   arm().then(() => {
-    if (!armed) return;
     tick();
     const observer = new MutationObserver(tick);
     observer.observe(document.documentElement, { childList: true, subtree: true });
