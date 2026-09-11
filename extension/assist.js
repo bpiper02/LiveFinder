@@ -1,7 +1,8 @@
 (() => {
   const autofill = globalThis.LiveFinderAutofill;
-  if (!autofill) {
-    console.warn('[LiveFinder Assist] autofill core missing');
+  const parseReviewerUrl = globalThis.LiveFinderUrl?.parseReviewerUrl;
+  if (!autofill || !parseReviewerUrl) {
+    console.warn('[LiveFinder Assist] required helpers missing');
     return;
   }
 
@@ -31,20 +32,18 @@
   }
 
   function pageContext() {
-    const isNero = /(^|\.)nero\.fan$/i.test(location.hostname);
-    const parts = location.pathname.split('/').filter(Boolean);
-    const reserved = new Set(['discover','learn','docs','home','login','signup','terms','privacy','support','pricing','about','create','careers','jobs','games','partner-program','settings','account','dashboard']);
-    const handle = parts[0] && !reserved.has(parts[0].toLowerCase()) ? decodeURIComponent(parts[0].replace(/^@/, '')) : '';
+    const parsed = parseReviewerUrl(location.href, location.origin);
     const root = activeRoot();
-    const controls = root === document ? [] : autofill.matchFields(root).descriptors;
+    const matchResult = root === document ? { matches: {} } : autofill.matchFields(root);
+    const matchedFields = Object.keys(matchResult.matches || {});
     return {
-      supported: isNero && !!handle,
-      site: isNero ? 'nero' : 'unknown',
+      supported: !!parsed,
+      site: /(^|\.)nero\.fan$/i.test(location.hostname) ? 'nero' : 'unknown',
       url: location.href,
-      handle,
-      reviewerUrl: handle ? `https://www.nero.fan/${encodeURIComponent(handle)}${parts.includes('live') ? '/live' : ''}` : '',
-      formVisible: controls.length > 0,
-      fieldCount: controls.length
+      handle: parsed?.handle || '',
+      reviewerUrl: parsed?.targetUrl || '',
+      formVisible: matchedFields.length > 0,
+      fieldCount: matchedFields.length
     };
   }
 
@@ -64,8 +63,8 @@
           return;
         }
         const root = activeRoot();
-        if (root === document) {
-          sendResponse({ ok: false, error: 'No visible submission form detected. Open the submission form first.', context });
+        if (root === document || !context.formVisible) {
+          sendResponse({ ok: false, error: 'No confident submission fields detected. Open the submission form first.', context });
           return;
         }
         const report = autofill.fillCanonical(message.draft || {}, root);
