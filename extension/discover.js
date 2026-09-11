@@ -1,12 +1,9 @@
 (() => {
-  const RESERVED = new Set([
-    'discover','learn','docs','home','login','signup','terms','privacy','support','pricing','about','create',
-    'careers','career','jobs','games','game','partner-program','partners','partner','company','product','products',
-    'features','feature','faq','contact','blog','press','legal','cookies','settings','account','profile','dashboard',
-    'creators','artists','teams','business','enterprise','community','help','download','app','api','status'
-  ]);
-  const SUFFIXES = new Set(['live','submit','submission','review']);
-  const NON_CREATOR_WORDS = /\b(company|careers?|jobs?|product|games?|partner program|partners?|pricing|privacy|terms|support|docs?|learn|about|contact|features?|faq|blog|press|legal|cookies?)\b/i;
+  const { parseReviewerUrl } = globalThis.LiveFinderUrl || {};
+  if (!parseReviewerUrl) {
+    console.error('[LiveFinder] Discover URL parser missing. Reload the extension.');
+    return;
+  }
 
   const norm = value => String(value || '').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
   const visible = el => {
@@ -16,53 +13,24 @@
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
   };
 
-  function parseReviewerHref(href) {
-    try {
-      const url = new URL(href, location.origin);
-      if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return null;
-
-      const parts = url.pathname.split('/').filter(Boolean).map(p => decodeURIComponent(p));
-      if (!parts.length) return null;
-
-      const first = parts[0].toLowerCase();
-      if (RESERVED.has(first)) return null;
-      if (!/^[a-z0-9._-]{2,80}$/i.test(parts[0])) return null;
-      if (parts.length > 2) return null;
-      if (parts.length === 2 && !SUFFIXES.has(parts[1].toLowerCase())) return null;
-
-      const handle = parts[0];
-      const suffix = parts[1]?.toLowerCase() || '';
-      return {
-        handle,
-        profileUrl: `https://www.nero.fan/${encodeURIComponent(handle)}`,
-        targetUrl: suffix ? `https://www.nero.fan/${encodeURIComponent(handle)}/${suffix}` : `https://www.nero.fan/${encodeURIComponent(handle)}`,
-        livePath: suffix === 'live'
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  function nearestCard(anchor) {
-    let el = anchor;
-    let fallback = anchor;
+  function nearestCard(element) {
+    let el = element;
     for (let i = 0; i < 7 && el?.parentElement; i += 1) {
       const parent = el.parentElement;
       const text = norm(parent.innerText || parent.textContent);
-      const links = parent.querySelectorAll?.('a[href]').length || 0;
-      if (text.length >= 6 && text.length <= 1800 && links <= 16) fallback = parent;
-      if (text.length >= 12 && text.length <= 900 && links <= 8) return parent;
+      if (text.length >= 8 && text.length <= 1800) return parent;
       el = parent;
     }
-    return fallback;
+    return element;
   }
 
   function extractDisplayName(card, handle) {
-    const candidates = [...card.querySelectorAll?.('h1,h2,h3,h4,strong,b,[class*="name" i]') || []]
+    if (!card?.querySelectorAll) return `@${handle}`;
+    const candidates = [...card.querySelectorAll('h1,h2,h3,h4,strong,b,[class*="name" i]')]
       .filter(visible)
       .map(el => String(el.innerText || el.textContent || '').trim())
       .filter(Boolean)
-      .filter(text => text.length <= 100 && !/live|submit|queue|review/i.test(text) && !NON_CREATOR_WORDS.test(text));
+      .filter(text => text.length <= 100 && !/live|submit|queue|review/i.test(text));
     return candidates[0] || `@${handle}`;
   }
 
@@ -78,25 +46,41 @@
     };
   }
 
+  function candidateElements() {
+    const seen = new Set();
+    const out = [];
+    const push = (el, raw) => {
+      if (!el || !raw) return;
+      const key = `${raw}::${out.length}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ el, raw });
+    };
+
+    for (const a of document.querySelectorAll('a[href]')) push(a, a.href || a.getAttribute('href'));
+    for (const el of document.querySelectorAll('[data-href]')) push(el, el.getAttribute('data-href'));
+    for (const el of document.querySelectorAll('[data-url]')) push(el, el.getAttribute('data-url'));
+    return out;
+  }
+
   function scrape() {
     const found = new Map();
-    let anchorsSeen = 0;
-    let validCreatorLinks = 0;
+    const candidates = candidateElements();
+    let validCandidates = 0;
 
-    for (const anchor of [...document.querySelectorAll('a[href]')].filter(visible)) {
-      anchorsSeen += 1;
-      const parsed = parseReviewerHref(anchor.href);
+    for (const candidate of candidates) {
+      const parsed = parseReviewerUrl(candidate.raw, location.origin);
       if (!parsed) continue;
-      validCreatorLinks += 1;
+      validCandidates += 1;
 
-      const card = nearestCard(anchor);
-      const text = String(card?.innerText || card?.textContent || anchor.innerText || anchor.textContent || '');
+      const card = nearestCard(candidate.el);
+      const text = String(card?.innerText || card?.textContent || candidate.el?.innerText || '');
       const classified = classify(text, parsed.livePath);
       const existing = found.get(parsed.handle.toLowerCase());
       const rank = { live: 4, open: 3, closed: 2, unknown: 1 };
       const item = {
         handle: parsed.handle,
-        displayName: extractDisplayName(card || anchor, parsed.handle),
+        displayName: extractDisplayName(card, parsed.handle),
         neroUrl: parsed.targetUrl,
         profileUrl: parsed.profileUrl,
         status: classified.status,
@@ -106,51 +90,50 @@
       if (!existing || rank[item.status] > rank[existing.status]) found.set(parsed.handle.toLowerCase(), item);
     }
 
-    console.debug(`[LiveFinder] Discover diagnostics: ${anchorsSeen} visible links, ${validCreatorLinks} valid creator/session links, ${found.size} unique reviewers`);
-
-    return [...found.values()].sort((a, b) => {
+    const items = [...found.values()].sort((a, b) => {
       const rank = { live: 0, open: 1, unknown: 2, closed: 3 };
       return rank[a.status] - rank[b.status] || a.handle.localeCompare(b.handle);
     });
+
+    return { items, diagnostics: { candidates: candidates.length, validCandidates, uniqueReviewers: items.length } };
   }
 
   let lastSignature = '';
   let saves = 0;
-  let everFoundItems = false;
+  let lastDiagnostics = null;
 
   async function scanAndSave() {
-    const items = scrape();
+    const { items, diagnostics } = scrape();
+    lastDiagnostics = diagnostics;
+    if (!items.length) return;
 
-    // Nero renders Discover asynchronously. Never let an early/temporary empty DOM
-    // erase a previously useful pool. A real non-empty scan will replace it below.
-    if (!items.length) {
-      if (!everFoundItems) console.debug('[LiveFinder] Discover not populated yet; waiting for cards…');
-      return;
-    }
-
-    everFoundItems = true;
-    const signature = JSON.stringify(items.map(x => [x.handle, x.status, x.neroUrl, x.displayName]));
+    const signature = JSON.stringify(items.map(x => [x.handle, x.status, x.neroUrl]));
     if (signature === lastSignature) return;
     lastSignature = signature;
 
     try {
-      const response = await chrome.runtime.sendMessage({ type: 'SAVE_NERO_POOL', items, scrapedAt: Date.now() });
+      const response = await chrome.runtime.sendMessage({ type: 'SAVE_NERO_POOL', items, scrapedAt: Date.now(), diagnostics });
       if (response?.ok) {
         saves += 1;
-        console.log(`[LiveFinder] Discover scan saved ${response.count ?? items.length} reviewers${response.rejected ? ` (${response.rejected} rejected by validation)` : ''}`);
+        console.log(`[LiveFinder] Discover saved ${response.count}/${items.length} reviewers`, diagnostics);
+      } else {
+        console.warn('[LiveFinder] Discover background rejected pool', response, diagnostics);
       }
     } catch (err) {
-      console.warn('[LiveFinder] Discover scan failed', err);
+      console.warn('[LiveFinder] Discover scan failed', err, diagnostics);
     }
   }
 
   scanAndSave();
   const observer = new MutationObserver(() => scanAndSave());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-  const timer = setInterval(scanAndSave, 1500);
+  observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href', 'data-href', 'data-url'] });
+  const timer = setInterval(scanAndSave, 1000);
+
   setTimeout(() => {
     clearInterval(timer);
     observer.disconnect();
-    if (!saves) console.warn('[LiveFinder] Discover scan produced no non-empty pool update.');
-  }, 20000);
+    if (!saves) {
+      console.warn('[LiveFinder] Discover scan found no reviewer pool. Diagnostics:', lastDiagnostics, 'URL:', location.href);
+    }
+  }, 25000);
 })();
