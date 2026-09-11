@@ -85,6 +85,20 @@
     });
   }
 
+  function reviewerKeyFromUrl(value) {
+    try {
+      const url = new URL(String(value || ''), location.origin);
+      if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return '';
+      return decodeURIComponent(url.pathname.split('/').filter(Boolean)[0] || '').replace(/^@/, '').toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  function currentReviewerKey() {
+    return reviewerKeyFromUrl(location.href);
+  }
+
   function textFor(el, root = document) {
     const parts = [el.name, el.id, el.placeholder, el.getAttribute?.('aria-label'), el.getAttribute?.('autocomplete')];
     if (el.id) {
@@ -475,6 +489,13 @@
       if (Date.now() - Number(record.storedAt || 0) > MAX_RUN_AGE_MS) {
         await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
         console.log('[LiveFinder] pending run expired');
+        return;
+      }
+
+      const targetKey = reviewerKeyFromUrl(record.payload?.reviewer?.neroUrl);
+      const pageKey = currentReviewerKey();
+      if (!targetKey || !pageKey || targetKey !== pageKey) {
+        console.log('[LiveFinder] pending run belongs to another Nero reviewer; ignoring this tab', { targetKey, pageKey });
         return;
       }
 
