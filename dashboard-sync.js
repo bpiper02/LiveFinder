@@ -7,7 +7,10 @@
   let watchedQueues = 0;
 
   const $ = id => document.getElementById(id);
-  const count = value => String(Math.max(0, Number(value) || 0)).padStart(3, '0');
+  const count = value => {
+    const number = Math.max(0, Math.floor(Number(value) || 0));
+    return number < 100 ? String(number).padStart(2, '0') : String(number);
+  };
 
   function readState() {
     try {
@@ -62,7 +65,7 @@
     if (event.source !== window) return;
     const message = event.data;
     if (message?.source !== EXT_SOURCE) return;
-    if (message.type === 'BRIDGE_CONNECTING') setConnection('WAKING EXTENSION...');
+    if (message.type === 'BRIDGE_CONNECTING') setConnection('WAKING...');
     if (message.type === 'BRIDGE_READY') {
       sync(true);
       setConnection(`ONLINE${message.version ? ` v${message.version}` : ''}`);
