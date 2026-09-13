@@ -13,7 +13,7 @@ const discoverMain = fs.readFileSync('extension/discover-main.js', 'utf8');
 const background = fs.readFileSync('extension/background.js', 'utf8');
 const dashboardSync = fs.readFileSync('dashboard-sync.js', 'utf8');
 
-assert.equal(manifest.version, '0.7.1');
+assert.equal(manifest.version, '0.7.2');
 const reviewerMainSet = manifest.content_scripts.find(entry => entry.world === 'MAIN' && entry.js?.includes('reviewer-main.js'));
 assert.ok(reviewerMainSet, 'reviewer MAIN-world probe must be loaded');
 
