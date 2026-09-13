@@ -49,13 +49,12 @@
     <button id="refreshPool" class="ghost" type="button">Refresh Nero pool</button>
   </div>
   <div class="poolMeta">
-    <p class="hint">LiveFinder scans Nero Discover in your browser, then sorts reviewers by what the page visibly exposes.</p>
+    <p class="hint">LiveFinder scans Nero Discover in your browser, then sorts reviewers by what the page visibly exposes. Reviewers you already submitted to are removed from this pool.</p>
     <span id="poolStatus" class="poolStatus">No scan yet.</span>
   </div>
   <div class="poolGrid">
     <div class="poolColumn"><h3><span class="dot liveDot"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div>
     <div class="poolColumn"><h3><span class="dot openDot"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div>
-    <div class="poolColumn"><h3><span class="dot submittedDot"></span>Submitted already</h3><div id="poolSubmitted" class="cards compact"><p class="empty">No recent submissions in this pool.</p></div></div>
     <div class="poolColumn"><h3><span class="dot otherDot"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div>
   </div>
 </section>
