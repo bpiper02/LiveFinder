@@ -7,6 +7,8 @@
   let context = null;
   let selectedSongId = localStorage.getItem('livefinder-assist-song-id') || '';
 
+  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
   function setResult(title, detail, kind = '') {
     const box = $('result');
     box.className = `resultWindow${kind ? ` ${kind}` : ''}`;
@@ -15,7 +17,7 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'
     }[char]));
   }
 
@@ -70,6 +72,41 @@
     return activeTab;
   }
 
+  function fallbackContextFromTab(tab) {
+    try {
+      const url = new URL(tab?.url || '');
+      if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return null;
+      const handle = decodeURIComponent(url.pathname.split('/').filter(Boolean)[0] || '').replace(/^@/, '');
+      if (!handle || handle.toLowerCase() === 'discover') return null;
+      return {
+        supported: true,
+        site: 'nero',
+        url: tab.url,
+        handle,
+        reviewerUrl: `https://www.nero.fan/${handle}/live`,
+        formVisible: false,
+        fieldCount: 0,
+        assistReachable: false
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async function sendTabMessage(tabId, message, attempts = 3) {
+    let lastError = null;
+    const waits = [0, 160, 420];
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (waits[attempt]) await sleep(waits[attempt]);
+      try {
+        return await chrome.tabs.sendMessage(tabId, message);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('LiveFinder Assist could not reach this tab.');
+  }
+
   async function loadLibrary() {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_SONG_LIBRARY' });
@@ -95,33 +132,38 @@
       return;
     }
 
+    const fallback = fallbackContextFromTab(tab);
+    // On a Nero reviewer page, never turn Autofill into a dead stop-sign control.
+    // If the content script is waking up, the click action retries and explains what to do.
+    $('autofillCurrent').disabled = !fallback;
+    $('runFullAuto').disabled = !fallback;
+
     try {
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'LIVEFINDER_ASSIST_STATUS' });
-      context = response?.context || null;
+      const response = await sendTabMessage(tab.id, { type: 'LIVEFINDER_ASSIST_STATUS' });
+      context = response?.context || fallback;
       if (!response?.ok || !context?.supported) {
-        $('siteBadge').textContent = 'NERO';
-        $('contextTitle').textContent = 'Nero page detected';
-        $('contextDetail').textContent = 'Open a specific reviewer page to use LiveFinder Assist.';
-        $('autofillCurrent').disabled = true;
-        $('runFullAuto').disabled = true;
+        context = fallback;
+        $('siteBadge').textContent = fallback ? 'NERO' : 'UNSUPPORTED';
+        $('contextTitle').textContent = fallback ? `@${fallback.handle}` : 'Nero page detected';
+        $('contextDetail').textContent = fallback
+          ? 'Reviewer detected. Open a submission step, then press Autofill this step.'
+          : 'Open a specific reviewer page to use LiveFinder Assist.';
         return;
       }
 
+      context.assistReachable = true;
       $('siteBadge').textContent = 'NERO';
       $('contextTitle').textContent = context.handle ? `@${context.handle}` : 'Nero reviewer';
       $('contextDetail').textContent = context.formVisible
         ? `${context.fieldCount} visible form field${context.fieldCount === 1 ? '' : 's'} detected. Autofill can handle this step.`
         : 'Reviewer detected. Open a submission step, then press Autofill this step — or run the full free submission.';
-      // Keep this action available on a supported reviewer page. If a form step is
-      // not open yet, Assist returns a useful message instead of a disabled cursor.
-      $('autofillCurrent').disabled = false;
-      $('runFullAuto').disabled = false;
     } catch (err) {
-      $('siteBadge').textContent = 'RELOAD TAB';
-      $('contextTitle').textContent = 'LiveFinder is not connected to this Nero tab';
-      $('contextDetail').textContent = 'Refresh the Nero tab once after reloading or updating the extension.';
-      $('autofillCurrent').disabled = true;
-      $('runFullAuto').disabled = true;
+      context = fallback;
+      $('siteBadge').textContent = fallback ? 'NERO' : 'RELOAD TAB';
+      $('contextTitle').textContent = fallback ? `@${fallback.handle}` : 'LiveFinder is not connected to this Nero tab';
+      $('contextDetail').textContent = fallback
+        ? 'Assist is waking on this tab. You can still press Autofill this step; LiveFinder will retry before asking you to refresh.'
+        : 'Refresh the Nero tab once after reloading or updating the extension.';
     }
   }
 
@@ -136,14 +178,17 @@
 
   async function autofillCurrent() {
     const tab = await getActiveTab();
-    if (!tab?.id) return;
+    if (!tab?.id || !/^https?:\/\/(?:www\.)?nero\.fan\//i.test(tab.url || '')) {
+      setResult('Open a Nero reviewer first', 'Autofill this step works on an open Nero reviewer submission form.', 'warn');
+      return;
+    }
     const draft = draftFromForm();
     setResult('Scanning visible form…', 'Only confident matches will be filled.');
 
     try {
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'LIVEFINDER_AUTOFILL_CURRENT', draft });
+      const response = await sendTabMessage(tab.id, { type: 'LIVEFINDER_AUTOFILL_CURRENT', draft }, 3);
       if (!response?.ok) {
-        setResult('Could not autofill this step', response?.error || 'No supported form detected.', 'warn');
+        setResult('Could not autofill this step', response?.error || 'Open the submission step first, then try again.', 'warn');
         await refreshContext();
         return;
       }
@@ -159,11 +204,12 @@
           missed ? 'warn' : 'success'
         );
       } else {
-        setResult('Nothing filled', missed ? `No confident match for: ${missed}.` : 'No matching editable fields were visible.', 'warn');
+        setResult('Nothing filled', missed ? `No confident match for: ${missed}.` : 'No matching editable fields were visible. Open the next submission step and try again.', 'warn');
       }
       await refreshContext();
     } catch (err) {
-      setResult('Autofill failed', String(err?.message || err), 'error');
+      setResult('Refresh this Nero tab once', 'LiveFinder Assist could not reach the page after three tries. Refresh the reviewer tab, reopen the submission step, then press Autofill this step again.', 'warn');
+      await refreshContext();
     }
   }
 
