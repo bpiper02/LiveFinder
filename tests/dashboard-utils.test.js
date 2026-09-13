@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const {
   normalizeNeroUrl,
@@ -53,4 +54,24 @@ const sigC = poolSignature([{ neroUrl: 'https://www.nero.fan/a/live', status: 'l
 assert.equal(sigA, sigB);
 assert.notEqual(sigA, sigC);
 
-console.log('dashboard-utils tests passed');
+const index = fs.readFileSync('index.html', 'utf8');
+const baseCss = fs.readFileSync('retro-base.css', 'utf8');
+const componentCss = fs.readFileSync('retro-components.css', 'utf8');
+const responsiveCss = fs.readFileSync('retro-responsive.css', 'utf8');
+
+assert.match(index, /<nav class="quickNav window" aria-label="Primary navigation">/);
+assert.match(index, /class="table" role="region" aria-label="Submission history" tabindex="0"/);
+assert.match(index, /<label><span>Artist<\/span><input/);
+assert.match(index, /<label><span>Song link<\/span><input/);
+assert.match(baseCss, /border-radius:0!important/);
+assert.match(baseCss, /outline:2px dotted #000/);
+assert.match(baseCss, /background-size:4px 4px/);
+assert.match(baseCss, /background:linear-gradient\(90deg,#000080,#1084d0\)/);
+assert.match(componentCss, /constructionFooter/);
+assert.match(responsiveCss, /@media\(pointer:coarse\).*min-height:44px/);
+assert.match(responsiveCss, /@media\(max-width:680px\)/);
+assert.match(responsiveCss, /\.tr\.head\{display:none\}/);
+assert.match(responsiveCss, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+assert.match(responsiveCss, /prefers-reduced-motion:reduce/);
+
+console.log('dashboard-utils + UI contract tests passed');
