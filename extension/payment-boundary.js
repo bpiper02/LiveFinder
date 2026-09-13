@@ -139,13 +139,15 @@
     await reportBoundary(rootInfo, payload);
   }
 
-  // Safety backstop: while a paid boundary is active, block LiveFinder-style
-  // programmatic clicks on anything except a verified free exit. User clicks
-  // remain untouched so Show paid options can hand control back safely.
+  // Safety backstop: block LiveFinder-style programmatic clicks on genuine paid
+  // boundaries. The known Nero queue-options screen is excluded here because its
+  // existing controller uses a neutral Next transition before selecting the
+  // explicit free "I'll wait" choice. Paid skip buttons remain untouched by that
+  // controller and are separately classified as paid actions.
   document.addEventListener('click', event => {
     if (event.isTrusted) return;
     const rootInfo = roots()[0];
-    if (!rootInfo) return;
+    if (!rootInfo || rootInfo.surface.kind === 'queue-options') return;
     const target = event.target instanceof Element ? event.target.closest('button, [role="button"], a') : null;
     if (!target) return;
     const label = target.innerText || target.textContent || target.getAttribute?.('aria-label') || '';
