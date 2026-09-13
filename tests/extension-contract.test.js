@@ -29,7 +29,8 @@ assert.match(bridge, /DEFAULT_TIMEOUT_MS = 6000/);
 assert.match(bridge, /readyAttempt < 6/);
 assert.match(bridge, /BRIDGE_CONNECTING/);
 assert.doesNotMatch(bridge, /console\.warn\('\[LiveFinder\] bridge not ready/);
-assert.match(dashboardSync, /WAKING EXTENSION\.\.\./);
+assert.match(dashboardSync, /message\.type === 'BRIDGE_CONNECTING'/);
+assert.match(dashboardSync, /setConnection\('WAKING\.\.\.'\)/);
 
 assert.match(assist, /const semantic = inspected/);
 assert.match(assist, /if \(semantic\[0\]\) return semantic\[0\]/);
