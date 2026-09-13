@@ -3,55 +3,79 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#c0c0c0" />
   <title>LiveFinder Assist</title>
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
 <body>
-  <main>
-    <header>
-      <div>
-        <p class="eyebrow">LIVEFINDER ASSIST</p>
-        <h1>Music submission autofill</h1>
+  <main class="assistShell">
+    <header class="window appHeader">
+      <div class="titleBar">
+        <strong>▣ LIVEFINDER ASSIST</strong>
+        <span id="siteBadge" class="siteBadge">CHECKING...</span>
       </div>
-      <span id="siteBadge" class="badge">checking…</span>
+      <div class="windowBody heroBody">
+        <p class="eyebrow">MUSIC SUBMISSION HELPER</p>
+        <h1>Autofill the form you're on.</h1>
+        <p class="lede">Pick a saved track, review the details, then fill this step or run the proven free Nero flow.</p>
+      </div>
     </header>
 
-    <section class="contextCard">
-      <strong id="contextTitle">Checking this page…</strong>
-      <span id="contextDetail">LiveFinder only fills what it can match confidently.</span>
-    </section>
-
-    <section>
-      <label for="songSelect">Saved song</label>
-      <div class="row">
-        <select id="songSelect">
-          <option value="">Manual draft</option>
-        </select>
-        <button id="resetDraft" class="secondary" type="button">Reset</button>
+    <section class="window contextWindow" aria-live="polite">
+      <div class="sectionBar"><strong>CURRENT PAGE</strong></div>
+      <div class="windowBody contextBody">
+        <strong id="contextTitle">Checking this page…</strong>
+        <span id="contextDetail">LiveFinder only fills fields it can match confidently.</span>
       </div>
-      <p id="libraryHint" class="hint">Changes below apply only to this submission.</p>
     </section>
 
-    <section class="fields">
-      <label>Artist<input id="artist" autocomplete="off" /></label>
-      <label>Song title<input id="title" autocomplete="off" /></label>
-      <label>Song link<input id="songUrl" type="url" autocomplete="off" /></label>
-      <label>Email<input id="email" type="email" autocomplete="off" /></label>
-      <label>Instagram<input id="instagram" autocomplete="off" /></label>
-      <label>Reviewer note<textarea id="note" rows="4"></textarea></label>
+    <section class="window">
+      <div class="sectionBar"><strong>SUBMISSION DETAILS</strong></div>
+      <div class="windowBody formBody">
+        <div class="savedSongBlock">
+          <label for="songSelect">Saved song</label>
+          <div class="songPickerRow">
+            <select id="songSelect">
+              <option value="">Manual draft</option>
+            </select>
+            <button id="resetDraft" class="secondaryButton" type="button">Reset</button>
+          </div>
+          <p id="libraryHint" class="hint">Changes below apply only to this submission.</p>
+        </div>
+
+        <div class="groove"></div>
+
+        <fieldset class="fieldGroup">
+          <legend>Track</legend>
+          <label>Artist<input id="artist" autocomplete="name" /></label>
+          <label>Song title<input id="title" autocomplete="off" /></label>
+          <label>Song link<input id="songUrl" type="url" inputmode="url" autocomplete="url" /></label>
+        </fieldset>
+
+        <fieldset class="fieldGroup">
+          <legend>Contact</legend>
+          <label>Email<input id="email" type="email" inputmode="email" autocomplete="email" /></label>
+          <label>Phone <em>optional</em><input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 555-5555" /></label>
+          <label>Instagram <em>optional</em><input id="instagram" autocomplete="off" placeholder="@artist" /></label>
+        </fieldset>
+
+        <fieldset class="fieldGroup">
+          <legend>Message</legend>
+          <label>Reviewer note <em>optional</em><textarea id="note" rows="3" placeholder="Short note or question"></textarea></label>
+        </fieldset>
+      </div>
     </section>
 
-    <section class="actions">
-      <button id="autofillCurrent" type="button">Autofill current form</button>
-      <button id="runFullAuto" class="secondary strong" type="button">Run full free submission</button>
-    </section>
-
-    <section id="result" class="result" aria-live="polite">
+    <section id="result" class="resultWindow" aria-live="polite">
       <strong>Ready.</strong>
       <span>Open a Nero reviewer page to begin.</span>
     </section>
 
-    <footer>Assist never selects paid skips. Full auto uses LiveFinder’s existing free Nero path.</footer>
+    <section class="actionDock" aria-label="Submission actions">
+      <button id="autofillCurrent" class="primaryButton" type="button">Autofill this step</button>
+      <button id="runFullAuto" class="secondaryAction" type="button">Run full free submission</button>
+      <small>Never selects paid skips or add-ons.</small>
+    </section>
   </main>
   <script src="sidepanel.js"></script>
 </body>
