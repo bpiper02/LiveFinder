@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "LiveFinder Nero Autofill",
+  "name": "LiveFinder Music Review Autofill",
   "version": "0.7.3",
   "minimum_chrome_version": "114",
-  "description": "Discover reviewers, assist music submission autofill, automate Nero free submissions, and alert artists as queues move.",
+  "description": "Discover live music reviewers, assist submission autofill, automate verified free submission paths, and alert artists as queues move.",
   "permissions": [
     "alarms",
     "notifications",
@@ -22,6 +22,10 @@
   "host_permissions": [
     "https://www.nero.fan/*",
     "https://nero.fan/*",
+    "https://auxchord.app/*",
+    "https://www.auxchord.app/*",
+    "https://tunetavern.app/*",
+    "https://www.tunetavern.app/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -53,6 +57,16 @@
       "js": ["url-utils.js", "review-links.js", "discover.js", "stream-enrich.js"],
       "run_at": "document_idle",
       "world": "ISOLATED"
+    },
+    {
+      "matches": ["https://auxchord.app/*", "https://www.auxchord.app/*"],
+      "js": ["provider-utils.js", "autofill-core.js", "provider-assist.js", "payment-guard.js", "auxchord.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://tunetavern.app/*", "https://www.tunetavern.app/*"],
+      "js": ["provider-utils.js", "autofill-core.js", "provider-assist.js"],
+      "run_at": "document_idle"
     }
   ]
 }
