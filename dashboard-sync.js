@@ -62,6 +62,7 @@
     if (event.source !== window) return;
     const message = event.data;
     if (message?.source !== EXT_SOURCE) return;
+    if (message.type === 'BRIDGE_CONNECTING') setConnection('WAKING EXTENSION...');
     if (message.type === 'BRIDGE_READY') {
       sync(true);
       setConnection(`ONLINE${message.version ? ` v${message.version}` : ''}`);
