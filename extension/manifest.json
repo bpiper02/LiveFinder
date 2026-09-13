@@ -65,7 +65,7 @@
     },
     {
       "matches": ["https://tunetavern.app/*", "https://www.tunetavern.app/*"],
-      "js": ["provider-utils.js", "autofill-core.js", "provider-assist.js"],
+      "js": ["provider-utils.js", "autofill-core.js", "provider-assist.js", "tunetavern-discover.js"],
       "run_at": "document_idle"
     }
   ]
