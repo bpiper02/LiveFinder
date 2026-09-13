@@ -15,7 +15,7 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
     }[char]));
   }
 
@@ -111,8 +111,10 @@
       $('contextTitle').textContent = context.handle ? `@${context.handle}` : 'Nero reviewer';
       $('contextDetail').textContent = context.formVisible
         ? `${context.fieldCount} visible form field${context.fieldCount === 1 ? '' : 's'} detected. Autofill can handle this step.`
-        : 'Reviewer detected. Open the submission form, or run the full free submission.';
-      $('autofillCurrent').disabled = !context.formVisible;
+        : 'Reviewer detected. Open a submission step, then press Autofill this step — or run the full free submission.';
+      // Keep this action available on a supported reviewer page. If a form step is
+      // not open yet, Assist returns a useful message instead of a disabled cursor.
+      $('autofillCurrent').disabled = false;
       $('runFullAuto').disabled = false;
     } catch (err) {
       $('siteBadge').textContent = 'RELOAD TAB';
