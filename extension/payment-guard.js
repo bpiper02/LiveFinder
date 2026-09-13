@@ -27,6 +27,9 @@
     'ill wait',
     'wait for free',
     'wait for free submission',
+    'wait in the free queue',
+    'join the free queue',
+    'free queue',
     'use free option',
     'continue free'
   ]);
