@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const guard = require('../extension/payment-guard.js');
 
-for (const label of ["I'm good", 'Im good', 'No thanks', 'Not now', "I'll wait", 'Continue without add-ons', 'Skip add-ons']) {
+for (const label of ["I'm good", 'Im good', 'No thanks', 'Not now', "I'll wait", 'Continue without add-ons', 'Skip add-ons', 'Wait in the free queue', 'Join the free queue']) {
   assert.equal(guard.isVerifiedFreeLabel(label), true, `${label} should be a verified free exit`);
 }
 for (const label of ['Skip', 'Skip $20', 'Super Skip $40', 'Throne $100', 'Pay $10', 'Checkout', 'Apple Pay', 'Google Pay', 'PayPal']) {
@@ -17,6 +17,8 @@ assert.equal(guard.isPaidActionLabel('PayPal'), true);
 assert.equal(guard.actionDecision("I'm good", 'Cover Art $150 Motion Cover $200').decision, 'safe-free');
 assert.equal(guard.actionDecision('No thanks', 'Feature $1000').decision, 'safe-free');
 assert.equal(guard.actionDecision("I'll wait", '119 ahead of you Skip $20 Super Skip $40 Throne $100').decision, 'safe-free');
+assert.equal(guard.actionDecision('Wait in the free queue', 'Skip $10 or wait in the free queue').decision, 'safe-free');
+assert.equal(guard.actionDecision('Join the free queue', 'Skip the line $10 or join the free queue').decision, 'safe-free');
 assert.equal(guard.actionDecision('Continue without add-ons', 'Add-ons Cover Art $150').decision, 'safe-free');
 assert.equal(guard.actionDecision('Continue', 'Cover Art $150 Motion Cover $200').decision, 'blocked-unknown');
 assert.equal(guard.actionDecision('Next', 'Card number Expiry CVV Pay $10').decision, 'blocked-unknown');
