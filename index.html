@@ -12,7 +12,7 @@
 <a class="skipLink" href="#pool">Skip to reviewer pool</a>
 <main class="appShell">
 <header class="window appHeader">
-  <div class="titleBar"><strong>▣ LIVEFINDER.EXE</strong><span class="windowControls" aria-hidden="true">_ □ ×</span></div>
+  <div class="titleBar"><strong>▣ LIVEFINDER.EXE</strong><span class="windowControls" aria-hidden="true">LOCAL MODE</span></div>
   <div class="windowBody heroBody">
     <div><p class="eyebrow">ARTIST REVIEW ROUTER // FREE PATH ONLY</p><h1 class="rainbowText">LIVEFINDER</h1><p class="lede">Save a track once. Find active reviewers. Submit without repeating the same admin work.</p></div>
     <div class="systemPanel" aria-label="System status"><div><span>EXTENSION</span><strong id="connectionState">CONNECTING...</strong></div><div><span>MODE</span><strong>LOCAL-FIRST / $0</strong></div><div><span>SAFETY</span><strong>NO AUTO-PAY</strong></div></div>
@@ -20,23 +20,43 @@
   <div class="marquee" aria-hidden="true"><div>★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★ QUEUE ALERTS ACTIVE ★ NEVER AUTO-SELECTS PAID SKIPS ★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★</div></div>
 </header>
 
-<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#reviewersSetup">Reviewers</a><a href="#history">Queue / History</a></nav>
+<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a></nav>
 <section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">000</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">000</strong></div><div><span>WATCHED</span><strong id="statQueues">000</strong></div></section>
 
 <section id="pool" class="window panel discovery">
-  <div class="titleBar sectionBar"><strong>03 // REVIEWER POOL <span class="hotBadge">HOT</span></strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
+  <div class="titleBar sectionBar"><strong>REVIEWER POOL</strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
   <div class="windowBody"><div class="poolToolbar"><p>Choose a reviewer and a saved song. LiveFinder handles the free Nero path.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div><div class="groove"></div><div class="poolGrid"><div class="poolColumn"><h3><span class="statusSquare liveSquare"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare openSquare"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare otherSquare"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div></div></div>
 </section>
 
-<section class="setupGrid">
-  <article id="songsSetup" class="window panel"><div class="titleBar sectionBar"><strong>01 // SONG LIBRARY</strong></div><div class="windowBody"><form id="songForm" class="stack"><div class="fieldGrid"><label><span>Artist</span><input id="artist" placeholder="bdotcom" required></label><label><span>Track title</span><input id="title" placeholder="Too Many Questions" required></label></div><label><span>Submission email</span><input id="email" type="email" placeholder="you@example.com" required></label><label><span>Instagram <em>optional</em></span><input id="instagram" placeholder="@artist"></label><label><span>Song link</span><input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required></label><label><span>Reviewer note <em>optional</em></span><textarea id="note" placeholder="Short note or question"></textarea></label><button class="primaryButton" type="submit">Save song</button></form><div class="groove"></div><div id="songs" class="cards"></div></div></article>
-  <article id="reviewersSetup" class="window panel"><div class="titleBar sectionBar"><strong>02 // SAVED REVIEWERS</strong></div><div class="windowBody"><form id="reviewerForm" class="stack"><label><span>Nero reviewer URL</span><input id="neroUrl" placeholder="https://www.nero.fan/handle/live" required></label><button class="primaryButton" type="submit">Save reviewer</button></form><p class="hint">Paste once. LiveFinder resolves the reviewer name and direct live link when Nero exposes it.</p><div class="groove"></div><div id="reviewers" class="cards"></div></div></article>
+<section id="songsSetup" class="window panel songLibrary">
+  <div class="titleBar sectionBar"><strong>SONG LIBRARY</strong></div>
+  <div class="windowBody songLibraryBody"><form id="songForm" class="stack"><div class="fieldGrid"><label><span>Artist</span><input id="artist" placeholder="bdotcom" required></label><label><span>Track title</span><input id="title" placeholder="Too Many Questions" required></label></div><label><span>Submission email</span><input id="email" type="email" placeholder="you@example.com" required></label><label><span>Instagram <em>optional</em></span><input id="instagram" placeholder="@artist"></label><label><span>Song link</span><input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required></label><label><span>Reviewer note <em>optional</em></span><textarea id="note" placeholder="Short note or question"></textarea></label><button class="primaryButton" type="submit">Save song</button></form><div class="groove"></div><div id="songs" class="cards"></div></div>
 </section>
 
 <section id="history" class="window panel submissions">
-  <div class="titleBar sectionBar"><strong>04 // QUEUE / HISTORY</strong><button id="clearHistory" class="titleButton dangerButton" type="button">Clear history</button></div>
+  <div class="titleBar sectionBar"><strong>QUEUE / HISTORY</strong><button id="clearHistory" class="titleButton dangerButton" type="button">Clear history</button></div>
   <div class="windowBody"><div class="alertBar"><div class="alertCopy"><strong>QUEUE ALERTS</strong><span id="queueAlertStatus">Connecting to extension…</span><small>Browser alerts at 10, 5, 2, 1 and next/up when Nero exposes your position.</small></div><div class="alertActions"><button id="scanQueuesNow" type="button">Check queues</button><button id="testQueueAlert" type="button">Test alert</button><button id="toggleQueueAlerts" type="button">Alerts on</button></div></div><div class="table" role="region" aria-label="Submission history" tabindex="0"><div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span><span></span></div><div id="submissionRows"></div></div></div>
 </section>
+
+<details id="reviewersSetup" class="window panel reviewerLibrary">
+  <summary class="titleBar sectionBar"><strong>REVIEWER LIBRARY</strong><span id="reviewerLibraryStatus" class="libraryStatus">OPTIONAL</span></summary>
+  <div class="windowBody">
+    <p class="libraryIntro">This is optional. Pool submissions are not automatically saved here. Use it when you want quick access to a reviewer again for a future song.</p>
+    <div class="reviewerLibraryGrid">
+      <section class="libraryPane">
+        <h3>SAVED REVIEWERS</h3>
+        <form id="reviewerForm" class="stack"><label><span>Nero reviewer URL</span><input id="neroUrl" placeholder="https://www.nero.fan/handle/live" required></label><button class="primaryButton" type="submit">Save reviewer</button></form>
+        <p class="hint">Only reviewers you explicitly save appear here.</p>
+        <div class="groove"></div><div id="reviewers" class="cards"></div>
+      </section>
+      <section class="libraryPane">
+        <h3>PAST REVIEWERS</h3>
+        <p class="hint">Pulled from submission history, deduplicated by reviewer. Pick a saved song to submit again, or save a reviewer for quicker access later.</p>
+        <div class="groove"></div><div id="pastReviewers" class="cards pastReviewers"></div>
+      </section>
+    </div>
+  </div>
+</details>
 
 <footer class="constructionFooter"><div>FREE NERO PATH ONLY // NEVER AUTO-SELECTS PAID SKIPS OR ADD-ONS</div></footer>
 </main>
