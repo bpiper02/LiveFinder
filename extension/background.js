@@ -83,6 +83,7 @@ function dashboardRunFromPayload(payload) {
     song: `${String(payload?.song?.artist || '').trim()} — ${String(payload?.song?.title || '').trim()}`.replace(/^\s*—\s*|\s*—\s*$/g, ''),
     status: 'automation started',
     queueAhead: null,
+    paymentPolicy: payload?.paymentPolicy === 'show-paid' ? 'show-paid' : 'free-only',
     createdAtMs,
     updatedAt: Date.now()
   };
@@ -105,6 +106,9 @@ async function updateDashboardRun(value, status) {
   if (!run) return;
   run.status = status;
   if (Number.isFinite(value?.ahead)) run.queueAhead = Number(value.ahead);
+  if (value?.paymentPolicy) run.paymentPolicy = value.paymentPolicy === 'show-paid' ? 'show-paid' : 'free-only';
+  if (value?.reason) run.paymentReason = String(value.reason);
+  if (Array.isArray(value?.prices)) run.paymentPrices = value.prices.map(String);
   run.updatedAt = Date.now();
   await saveDashboardRuns(runs);
 }
@@ -269,6 +273,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {
       if (message.type === 'PING') {
         sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
+        return;
+      }
+      if (message.type === 'GET_PAYMENT_POLICY') {
+        const stored = await get('paymentPolicy');
+        const policy = stored === 'show-paid' ? 'show-paid' : 'free-only';
+        sendResponse({ ok: true, policy });
+        return;
+      }
+      if (message.type === 'SET_PAYMENT_POLICY') {
+        const policy = message.policy === 'show-paid' ? 'show-paid' : 'free-only';
+        await put('paymentPolicy', policy);
+        sendResponse({ ok: true, policy });
         return;
       }
       if (message.type === 'SYNC_SONG_LIBRARY') {
