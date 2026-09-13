@@ -1,92 +1,45 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#c0c0c0">
 <title>LiveFinder</title>
-<link rel="icon" href="data:," />
-<link rel="stylesheet" href="styles.css" />
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<main>
-<header>
-  <div>
-    <p class="eyebrow">ARTIST SUBMISSION ROUTER · NERO MVP</p>
-    <h1>Put the song where the listeners already are.</h1>
-    <p class="lede">Save your track once. Discover Nero review opportunities. LiveFinder walks the free submission flow, records the queue result, and can alert you as your turn gets close.</p>
+<a class="skipLink" href="#pool">Skip to reviewer pool</a>
+<main class="appShell">
+<header class="window appHeader">
+  <div class="titleBar"><strong>▣ LIVEFINDER.EXE</strong><span class="windowControls" aria-hidden="true">_ □ ×</span></div>
+  <div class="windowBody heroBody">
+    <div><p class="eyebrow">ARTIST REVIEW ROUTER // FREE PATH ONLY</p><h1 class="rainbowText">LIVEFINDER</h1><p class="lede">Save a track once. Find active reviewers. Submit without repeating the same admin work.</p></div>
+    <div class="systemPanel" aria-label="System status"><div><span>EXTENSION</span><strong id="connectionState">CONNECTING...</strong></div><div><span>MODE</span><strong>LOCAL-FIRST / $0</strong></div><div><span>SAFETY</span><strong>NO AUTO-PAY</strong></div></div>
   </div>
-  <span class="pill">LOCAL-FIRST · $0</span>
+  <div class="marquee" aria-hidden="true"><div>★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★ QUEUE ALERTS ACTIVE ★ NEVER AUTO-SELECTS PAID SKIPS ★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★</div></div>
 </header>
 
-<section class="grid two">
-  <article class="panel">
-    <div class="sectionTitle"><span>01</span><h2>Songs</h2></div>
-    <form id="songForm" class="stack">
-      <div class="row"><input id="artist" placeholder="Artist" required><input id="title" placeholder="Track title" required></div>
-      <input id="email" type="email" placeholder="Submission email" required>
-      <input id="instagram" placeholder="Instagram handle (optional)">
-      <input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required>
-      <textarea id="note" placeholder="Optional reviewer note / question"></textarea>
-      <button type="submit">Add song</button>
-    </form>
-    <div id="songs" class="cards"></div>
-  </article>
+<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#reviewersSetup">Reviewers</a><a href="#history">Queue / History</a></nav>
+<section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">000</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">000</strong></div><div><span>WATCHED</span><strong id="statQueues">000</strong></div></section>
 
-  <article class="panel">
-    <div class="sectionTitle"><span>02</span><h2>Saved reviewers</h2></div>
-    <form id="reviewerForm" class="stack">
-      <input id="neroUrl" placeholder="Paste nero.fan reviewer link" required>
-      <button type="submit">Add reviewer</button>
-    </form>
-    <p class="hint">No name needed. LiveFinder uses the Nero URL as the source of truth.</p>
-    <div id="reviewers" class="cards"></div>
-  </article>
+<section id="pool" class="window panel discovery">
+  <div class="titleBar sectionBar"><strong>03 // REVIEWER POOL <span class="hotBadge">HOT</span></strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
+  <div class="windowBody"><div class="poolToolbar"><p>Choose a reviewer and a saved song. LiveFinder handles the free Nero path.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div><div class="groove"></div><div class="poolGrid"><div class="poolColumn"><h3><span class="statusSquare liveSquare"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare openSquare"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare otherSquare"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div></div></div>
 </section>
 
-<section class="panel discovery">
-  <div class="sectionTitle splitTitle">
-    <div><span>03</span><h2>Nero opportunity pool</h2></div>
-    <button id="refreshPool" class="ghost" type="button">Refresh Nero pool</button>
-  </div>
-  <div class="poolMeta">
-    <p class="hint">LiveFinder scans Nero Discover in your browser, then sorts reviewers by what the page visibly exposes. Reviewers you already submitted to are removed from this pool.</p>
-    <span id="poolStatus" class="poolStatus">No scan yet.</span>
-  </div>
-  <div class="poolGrid">
-    <div class="poolColumn"><h3><span class="dot liveDot"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div>
-    <div class="poolColumn"><h3><span class="dot openDot"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div>
-    <div class="poolColumn"><h3><span class="dot otherDot"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div>
-  </div>
+<section class="setupGrid">
+  <article id="songsSetup" class="window panel"><div class="titleBar sectionBar"><strong>01 // SONG LIBRARY</strong></div><div class="windowBody"><form id="songForm" class="stack"><div class="fieldGrid"><label><span>Artist</span><input id="artist" placeholder="bdotcom" required></label><label><span>Track title</span><input id="title" placeholder="Too Many Questions" required></label></div><label><span>Submission email</span><input id="email" type="email" placeholder="you@example.com" required></label><label><span>Instagram <em>optional</em></span><input id="instagram" placeholder="@artist"></label><label><span>Song link</span><input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required></label><label><span>Reviewer note <em>optional</em></span><textarea id="note" placeholder="Short note or question"></textarea></label><button class="primaryButton" type="submit">Save song</button></form><div class="groove"></div><div id="songs" class="cards"></div></div></article>
+  <article id="reviewersSetup" class="window panel"><div class="titleBar sectionBar"><strong>02 // SAVED REVIEWERS</strong></div><div class="windowBody"><form id="reviewerForm" class="stack"><label><span>Nero reviewer URL</span><input id="neroUrl" placeholder="https://www.nero.fan/handle/live" required></label><button class="primaryButton" type="submit">Save reviewer</button></form><p class="hint">Paste once. LiveFinder resolves the reviewer name and direct live link when Nero exposes it.</p><div class="groove"></div><div id="reviewers" class="cards"></div></div></article>
 </section>
 
-<section class="panel submissions">
-  <div class="sectionTitle splitTitle">
-    <div><span>04</span><h2>Submission history</h2></div>
-    <button id="clearHistory" class="ghost danger" type="button">Clear history</button>
-  </div>
-  <div class="alertBar">
-    <div>
-      <strong>Queue alerts</strong>
-      <span id="queueAlertStatus">Connecting to extension…</span>
-      <small>Local browser notifications at 10, 5, 2, 1 and next/up when Nero exposes your current position.</small>
-    </div>
-    <div class="alertActions">
-      <button id="scanQueuesNow" class="ghost" type="button">Check open Nero tabs</button>
-      <button id="testQueueAlert" class="ghost" type="button">Test alert</button>
-      <button id="toggleQueueAlerts" class="ghost" type="button">Alerts on</button>
-    </div>
-  </div>
-  <div class="table">
-    <div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span><span></span></div>
-    <div id="submissionRows"></div>
-  </div>
+<section id="history" class="window panel submissions">
+  <div class="titleBar sectionBar"><strong>04 // QUEUE / HISTORY</strong><button id="clearHistory" class="titleButton dangerButton" type="button">Clear history</button></div>
+  <div class="windowBody"><div class="alertBar"><div class="alertCopy"><strong>QUEUE ALERTS</strong><span id="queueAlertStatus">Connecting to extension…</span><small>Browser alerts at 10, 5, 2, 1 and next/up when Nero exposes your position.</small></div><div class="alertActions"><button id="scanQueuesNow" type="button">Check queues</button><button id="testQueueAlert" type="button">Test alert</button><button id="toggleQueueAlerts" type="button">Alerts on</button></div></div><div class="table" role="region" aria-label="Submission history" tabindex="0"><div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span><span></span></div><div id="submissionRows"></div></div></div>
 </section>
 
-<footer>Free Nero path only. LiveFinder never selects paid skips or add-ons automatically.</footer>
+<footer class="constructionFooter"><div>FREE NERO PATH ONLY // NEVER AUTO-SELECTS PAID SKIPS OR ADD-ONS</div></footer>
 </main>
-<script src="dashboard-sync.js"></script>
-<script src="dashboard-ledger.js"></script>
-<script src="dashboard-utils.js"></script>
-<script src="app.js"></script>
+<script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script>
 </body>
 </html>
