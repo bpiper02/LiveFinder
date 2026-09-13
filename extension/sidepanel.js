@@ -6,6 +6,7 @@
   let activeTab = null;
   let context = null;
   let selectedSongId = localStorage.getItem('livefinder-assist-song-id') || '';
+  let paymentPolicy = 'free-only';
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -23,6 +24,33 @@
 
   function rememberedPhone() {
     return localStorage.getItem(PHONE_KEY) || '';
+  }
+
+  function currentPaymentPolicy() {
+    return paymentPolicy === 'show-paid' ? 'show-paid' : 'free-only';
+  }
+
+  async function loadPaymentPolicy() {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_PAYMENT_POLICY' });
+      paymentPolicy = response?.policy === 'show-paid' ? 'show-paid' : 'free-only';
+    } catch {
+      paymentPolicy = 'free-only';
+    }
+    if ($('paymentPolicy')) $('paymentPolicy').value = paymentPolicy;
+  }
+
+  async function savePaymentPolicy(value) {
+    const next = value === 'show-paid' ? 'show-paid' : 'free-only';
+    paymentPolicy = next;
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'SET_PAYMENT_POLICY', policy: next });
+      if (response?.ok) paymentPolicy = response.policy === 'show-paid' ? 'show-paid' : 'free-only';
+    } catch {
+      // Safe fallback is always free-only when extension state cannot be saved.
+      paymentPolicy = 'free-only';
+    }
+    if ($('paymentPolicy')) $('paymentPolicy').value = paymentPolicy;
   }
 
   function draftFromForm() {
@@ -251,17 +279,20 @@
       runId: crypto.randomUUID(),
       song,
       reviewer,
+      paymentPolicy: currentPaymentPolicy(),
       createdAt: Date.now()
     };
 
     $('runFullAuto').disabled = true;
-    setResult('Starting full free submission…', 'The Nero tab will refresh once, then LiveFinder will use the existing free-flow automation.');
+    setResult('Starting full free submission…', currentPaymentPolicy() === 'show-paid'
+      ? 'LiveFinder will use verified free paths and pause if payment becomes required.'
+      : 'LiveFinder will use verified free paths and stop if payment becomes required.');
 
     try {
       const response = await chrome.runtime.sendMessage({ type: 'STORE_NERO_SUBMISSION', payload });
       if (!response?.ok) throw new Error(response?.error || 'Could not store submission run.');
       await chrome.tabs.reload(tab.id);
-      setResult('Full auto started', 'Watch the Nero tab. LiveFinder will avoid paid skips and capture your queue position.', 'success');
+      setResult('Full auto started', 'Watch the Nero tab. LiveFinder never authorizes a charge and will capture your queue position when available.', 'success');
     } catch (err) {
       $('runFullAuto').disabled = false;
       setResult('Could not start full auto', String(err?.message || err), 'error');
@@ -281,6 +312,8 @@
     else localStorage.removeItem(PHONE_KEY);
   });
 
+  $('paymentPolicy').addEventListener('change', () => savePaymentPolicy($('paymentPolicy').value));
+
   $('resetDraft').addEventListener('click', () => {
     applyDraft(selectedSong() || {});
     setResult('Draft reset', selectedSong() ? 'Restored the selected saved song.' : 'Cleared the manual draft.');
@@ -293,7 +326,7 @@
     if (tabId === activeTab?.id && (changeInfo.status === 'complete' || changeInfo.url)) refreshContext();
   });
 
-  Promise.all([loadLibrary(), refreshContext()]).catch(err => {
+  Promise.all([loadLibrary(), loadPaymentPolicy(), refreshContext()]).catch(err => {
     setResult('LiveFinder Assist error', String(err?.message || err), 'error');
   });
 })();
