@@ -328,10 +328,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return;
       }
       if (message.type === 'SAVE_NERO_RESULT') {
+        const status = String(message.value?.status || 'submitted').toLowerCase();
         await put('lastResult', message.value);
-        await upsertWatchFromQueue(message.value);
-        await updateDashboardRun(message.value, 'submitted');
-        sendResponse({ ok: true });
+        if (status === 'submitted') await upsertWatchFromQueue(message.value);
+        await updateDashboardRun(message.value, status);
+        sendResponse({ ok: true, status });
         return;
       }
       if (message.type === 'GET_NERO_STATUS') {
