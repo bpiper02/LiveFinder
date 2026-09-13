@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "minimum_chrome_version": "114",
   "description": "Discover reviewers, assist music submission autofill, automate Nero free submissions, and alert artists as queues move.",
   "permissions": [
