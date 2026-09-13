@@ -6,8 +6,11 @@
     unknown: 0,
     'automation started': 1,
     queued: 2,
-    submitted: 3
+    submitted: 4,
+    'payment required': 4,
+    failed: 4
   };
+  const TERMINAL_STATUSES = new Set(['submitted', 'payment required', 'failed']);
   let reloadScheduled = false;
 
   function readState() {
@@ -39,10 +42,13 @@
         reviewer: String(run.reviewer || ''),
         songId: String(run.songId || ''),
         song: String(run.song || ''),
-        status: String(run.status || 'automation started'),
+        status: String(run.status || 'automation started').toLowerCase(),
         queueAhead: Number.isFinite(run.queueAhead) ? Number(run.queueAhead) : null,
         streamUrl: String(run.streamUrl || ''),
         sessionId: String(run.sessionId || ''),
+        paymentPolicy: run.paymentPolicy === 'show-paid' ? 'show-paid' : 'free-only',
+        paymentReason: String(run.paymentReason || ''),
+        paymentPrices: Array.isArray(run.paymentPrices) ? run.paymentPrices.map(String) : [],
         createdAt: new Date(Number(run.createdAtMs || Date.now())).toLocaleString(),
         createdAtMs: Number(run.createdAtMs || Date.now())
       };
@@ -53,14 +59,23 @@
         continue;
       }
 
-      for (const key of ['reviewerUrl', 'reviewer', 'songId', 'song', 'streamUrl', 'sessionId']) {
+      for (const key of ['reviewerUrl', 'reviewer', 'songId', 'song', 'streamUrl', 'sessionId', 'paymentReason']) {
         if (next[key] && existing[key] !== next[key]) {
           existing[key] = next[key];
           changed = true;
         }
       }
+      if (next.paymentPolicy && existing.paymentPolicy !== next.paymentPolicy) {
+        existing.paymentPolicy = next.paymentPolicy;
+        changed = true;
+      }
+      if (next.paymentPrices.length && JSON.stringify(existing.paymentPrices || []) !== JSON.stringify(next.paymentPrices)) {
+        existing.paymentPrices = next.paymentPrices;
+        changed = true;
+      }
 
-      if (rank(next.status) > rank(existing.status)) {
+      const existingStatus = String(existing.status || 'unknown').toLowerCase();
+      if (rank(next.status) > rank(existingStatus) || (!TERMINAL_STATUSES.has(existingStatus) && TERMINAL_STATUSES.has(next.status))) {
         existing.status = next.status;
         changed = true;
       }
@@ -92,7 +107,7 @@
       const { changed, state } = mergeRuns(runs);
       const terminalIds = runs
         .map(run => state.submissions.find(item => item.id === run?.id))
-        .filter(item => item?.status === 'submitted')
+        .filter(item => TERMINAL_STATUSES.has(String(item?.status || '').toLowerCase()))
         .map(item => item.id);
 
       if (terminalIds.length) {
