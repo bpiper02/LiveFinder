@@ -17,7 +17,7 @@ assert.match(index, /id="queueAlertStatus"/);
 assert.match(base, /border-radius:0!important/);
 assert.match(base, /outline:2px dotted #000/);
 assert.match(base, /background-size:4px 4px/);
-assert.match(components, /background:linear-gradient\(90deg,#000080,#1084d0\)|titleBar/);
+assert.match(base, /background:linear-gradient\(90deg,#000080,#1084d0\)/);
 assert.match(components, /constructionFooter/);
 assert.match(responsive, /@media\(pointer:coarse\).*min-height:44px/);
 assert.match(responsive, /@media\(max-width:680px\)/);
