@@ -25,7 +25,20 @@
 
 <section id="pool" class="window panel discovery">
   <div class="titleBar sectionBar"><strong>REVIEWER POOL</strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
-  <div class="windowBody"><div class="poolToolbar"><p>Choose a reviewer and a saved song. LiveFinder handles the free Nero path.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div><div class="groove"></div><div class="poolGrid"><div class="poolColumn"><h3><span class="statusSquare liveSquare"></span>Live now</h3><div id="poolLive" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare openSquare"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact"></div></div><div class="poolColumn"><h3><span class="statusSquare otherSquare"></span>Other / unknown</h3><div id="poolOther" class="cards compact"></div></div></div></div>
+  <div class="windowBody">
+    <div class="poolToolbar"><p>Choose a reviewer and a saved song. LiveFinder handles the free Nero path.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div>
+    <div class="groove"></div>
+    <div id="poolTabs" class="poolTabs" role="tablist" aria-label="Reviewer availability">
+      <button id="poolTabLive" class="poolTab isActive" type="button" role="tab" aria-selected="true" aria-controls="poolViewLive" data-pool-filter="live"><span>Live</span><strong data-pool-count="live">0</strong></button>
+      <button id="poolTabOpen" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViewOpen" data-pool-filter="open"><span>Open / Upcoming</span><strong data-pool-count="open">0</strong></button>
+      <button id="poolTabAll" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViews" data-pool-filter="all"><span>All</span><strong data-pool-count="all">0</strong></button>
+    </div>
+    <div id="poolViews" class="poolViews" data-active-filter="live">
+      <section id="poolViewLive" class="poolView" role="tabpanel" aria-labelledby="poolTabLive" data-pool-view="live"><h3 class="poolGroupLabel"><span class="statusSquare liveSquare"></span>Live now</h3><div id="poolLive" class="cards compact poolCards"></div></section>
+      <section id="poolViewOpen" class="poolView" role="tabpanel" aria-labelledby="poolTabOpen" data-pool-view="open" hidden><h3 class="poolGroupLabel"><span class="statusSquare openSquare"></span>Open / upcoming</h3><div id="poolOpen" class="cards compact poolCards"></div></section>
+      <section id="poolViewOther" class="poolView" data-pool-view="other" hidden><h3 class="poolGroupLabel"><span class="statusSquare otherSquare"></span>Other / unknown</h3><div id="poolOther" class="cards compact poolCards"></div></section>
+    </div>
+  </div>
 </section>
 
 <section id="songsSetup" class="window panel songLibrary">
@@ -60,6 +73,6 @@
 
 <footer class="constructionFooter"><div>FREE NERO PATH ONLY // NEVER AUTO-SELECTS PAID SKIPS OR ADD-ONS</div></footer>
 </main>
-<script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script>
+<script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script><script src="pool-tabs.js"></script>
 </body>
 </html>
