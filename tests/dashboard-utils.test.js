@@ -35,18 +35,20 @@ const queued = { reviewerUrl: 'https://www.nero.fan/beta/live', status: 'queued'
 const started = { reviewerUrl: 'https://www.nero.fan/gamma/live', status: 'automation started', createdAtMs: NOW - HOUR };
 const old = { reviewerUrl: 'https://www.nero.fan/delta/live', status: 'submitted', createdAtMs: NOW - 25 * HOUR };
 const failed = { reviewerUrl: 'https://www.nero.fan/epsilon/live', status: 'failed', createdAtMs: NOW - HOUR };
+const paymentRequired = { reviewerUrl: 'https://www.nero.fan/zeta/live', status: 'payment required', createdAtMs: NOW - HOUR };
 
 assert.equal(isActiveSubmission(recent, NOW), true);
 assert.equal(isActiveSubmission(old, NOW), false);
 assert.equal(isActiveSubmission(failed, NOW), false);
+assert.equal(isActiveSubmission(paymentRequired, NOW), false, 'paid-only reviewers should return to the available pool because no submission completed');
 
-const pool = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'].map(handle => ({
+const pool = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'].map(handle => ({
   handle,
   neroUrl: `https://www.nero.fan/${handle}/live`,
   status: 'live'
 }));
-const available = filterAvailablePool(pool, [recent, queued, started, old, failed], NOW);
-assert.deepEqual(available.map(item => item.handle), ['delta', 'epsilon']);
+const available = filterAvailablePool(pool, [recent, queued, started, old, failed, paymentRequired], NOW);
+assert.deepEqual(available.map(item => item.handle), ['delta', 'epsilon', 'zeta']);
 
 const sigA = poolSignature([{ neroUrl: 'https://www.nero.fan/a/live', status: 'live', streamUrl: 'https://tiktok.com/@a/live' }]);
 const sigB = poolSignature([{ neroUrl: 'https://www.nero.fan/a/live', status: 'live', streamUrl: 'https://tiktok.com/@a/live' }]);
@@ -56,6 +58,7 @@ assert.notEqual(sigA, sigC);
 
 const index = fs.readFileSync('index.html', 'utf8');
 const app = fs.readFileSync('app.js', 'utf8');
+const paymentPolicyWeb = fs.readFileSync('payment-policy-web.js', 'utf8');
 const poolTabs = fs.readFileSync('pool-tabs.js', 'utf8');
 const poolTabsCss = fs.readFileSync('pool-tabs.css', 'utf8');
 const poolDisclosureCss = fs.readFileSync('pool-disclosure.css', 'utf8');
@@ -84,14 +87,25 @@ assert.doesNotMatch(index, /hotBadge/);
 assert.doesNotMatch(index, /class="systemPanel"/);
 assert.match(index, /id="musicQuote"/);
 assert.match(index, /class="utilityFooter window"/);
+assert.match(index, /id="paymentPolicy"/);
+assert.match(index, /Stop at paid step/);
+assert.match(index, /Show paid option, then pause/);
+assert.match(index, /LiveFinder never authorizes a charge/);
+assert.match(index, /payment-policy-web\.js/);
 assert.match(index, /Extension: <strong id="connectionState">/);
 assert.match(index, /<strong id="statSongs">00<\/strong>/);
 assert.doesNotMatch(index, /0[1-4] \/\/ (?:REVIEWER POOL|SONG LIBRARY|SAVED REVIEWERS|QUEUE \/ HISTORY)/);
 
 assert.match(app, /explicitSaved/);
 assert.match(app, /function pastReviewerRecords\(\)/);
+assert.match(app, /PAYMENT_POLICY_KEY='livefinder-payment-policy'/);
+assert.match(app, /paymentPolicy:currentPaymentPolicy/);
+assert.match(app, /s\.status==='payment required'/);
 assert.match(app, /function submitPoolReviewer[\s\S]*?startSubmission\(reviewer,songId\)/);
 assert.doesNotMatch(app, /function submitPoolReviewer[\s\S]*?state\.reviewers\.push\(reviewer\)[\s\S]*?function submitToReviewer/);
+assert.match(paymentPolicyWeb, /REQUEST_PAYMENT_POLICY/);
+assert.match(paymentPolicyWeb, /SET_PAYMENT_POLICY/);
+assert.match(paymentPolicyWeb, /PAYMENT_POLICY_STATE/);
 
 assert.match(poolTabs, /library\.open=false/);
 assert.match(poolTabs, /chooseUsableFilter/);
@@ -137,10 +151,12 @@ assert.match(baseCss, /\.heroBody\{display:block/);
 assert.match(baseCss, /\.quoteRail/);
 assert.match(componentCss, /\.utilityFooter/);
 assert.match(componentCss, /\.footerMeta/);
+assert.match(componentCss, /\.paymentPolicyControl/);
 assert.doesNotMatch(componentCss, /\.poolStatus\{[^}]*text-transform:uppercase/);
 assert.match(componentCss, /reviewerLibraryGrid/);
 assert.match(responsiveCss, /@media\(pointer:coarse\).*min-height:44px/);
 assert.match(responsiveCss, /@media\(max-width:680px\)/);
+assert.match(responsiveCss, /\.paymentPolicyControl select\{width:100%;min-height:44px/);
 assert.match(responsiveCss, /\.tr\.head\{display:none\}/);
 assert.match(responsiveCss, /prefers-reduced-motion:reduce/);
 
