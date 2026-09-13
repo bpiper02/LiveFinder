@@ -33,7 +33,7 @@
     },
     {
       "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
-      "js": ["url-utils.js", "autofill-core.js", "assist.js", "addon-bypass.js", "nero.js", "queue-monitor.js"],
+      "js": ["url-utils.js", "review-links.js", "reviewer-enrich.js", "autofill-core.js", "assist.js", "addon-bypass.js", "nero.js", "queue-monitor.js"],
       "run_at": "document_idle"
     },
     {
