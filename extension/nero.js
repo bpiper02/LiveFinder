@@ -366,7 +366,7 @@
 
     runtimeSend({
       type: 'SAVE_NERO_QUEUE',
-      value: { reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, capturedAt: Date.now() }
+      value: { runId: payload.runId || '', reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, capturedAt: Date.now() }
     }).catch(() => {});
 
     showBadge(`LiveFinder: ${queueAhead ?? '?'} ahead. Avoiding all paid skips.`);
@@ -397,7 +397,7 @@
     finished = true;
     stopLoop();
 
-    const result = { status: 'submitted', reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, completedAt: Date.now() };
+    const result = { runId: payload.runId || '', status: 'submitted', reviewer: payload.reviewer, song: payload.song, ahead: queueAhead, completedAt: Date.now() };
     await runtimeSend({ type: 'SAVE_NERO_RESULT', value: result }).catch(() => {});
     await runtimeSend({ type: 'CLEAR_NERO_SUBMISSION' }).catch(() => {});
     showBadge(`LiveFinder: submitted${queueAhead != null ? ` · ${queueAhead} ahead captured` : ''}.`, 'success');
@@ -415,6 +415,13 @@
 
   async function tick() {
     if (!payload || finished) return;
+
+    if (globalThis.LiveFinderPaymentBoundary?.blocked) {
+      finished = true;
+      stopLoop();
+      showBadge('LiveFinder paused at a paid step. No charge was attempted.', 'error');
+      return;
+    }
 
     if (Date.now() - startedAt > MAX_RUN_MS) {
       await abortRun('run timed out after two minutes.');
@@ -439,16 +446,11 @@
           return;
         }
 
-        // Nero closes the wizard after the free “I’ll wait” action. That return to
-        // the live/reviewer page is the happy-path completion signal, not a cancel.
         if (enteredWorkflow && lastAction === 'ill-wait' && Date.now() - lastActionAt < 15000) {
           await completeRun();
           return;
         }
 
-        // Once the wizard has started, Nero can briefly unmount/re-route between
-        // steps. Do not misclassify that transition as a user cancellation. The
-        // global run timeout remains the fallback for a genuinely abandoned flow.
         if (enteredWorkflow) {
           showBadge('LiveFinder: waiting for Nero to finish the transition…');
         }
