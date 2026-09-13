@@ -1,36 +1,26 @@
-:root{
-  color-scheme:light;
-  --bg:#f3efe3;
-  --panel:#fffdf7;
-  --ink:#171714;
-  --muted:#6b665d;
-  --line:#c8c0b1;
-  --accent:#9d2d27;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-main{padding:16px;display:grid;gap:16px;min-width:300px}
-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:2px solid var(--ink);padding-bottom:12px}
-.eyebrow{margin:0 0 5px;font-size:10px;font-weight:900;letter-spacing:.16em}
-h1{margin:0;font-family:Georgia,serif;font-size:22px;line-height:1.05}
-.badge{border:1px solid var(--ink);padding:5px 7px;font-size:10px;font-weight:900;text-transform:uppercase;background:var(--panel)}
-.contextCard,.result{border:1px solid var(--line);background:var(--panel);padding:12px;display:grid;gap:4px}
-.contextCard span,.result span,.hint,footer{color:var(--muted);font-size:12px;line-height:1.45}
-section{display:grid;gap:8px}
-label{display:grid;gap:5px;font-size:11px;font-weight:900;letter-spacing:.05em;text-transform:uppercase}
-input,textarea,select,button{width:100%;border:1px solid var(--ink);background:var(--panel);color:var(--ink);font:inherit}
-input,textarea,select{padding:10px 11px;border-radius:0;font-size:14px;text-transform:none;letter-spacing:normal}
-textarea{resize:vertical;min-height:86px}
-.row{display:grid;grid-template-columns:minmax(0,1fr) 72px;gap:8px}
-.fields{gap:10px}
-.actions{gap:8px}
-button{padding:11px 12px;cursor:pointer;font-weight:900;background:var(--ink);color:#fff}
-button.secondary{background:transparent;color:var(--ink)}
-button.strong{border-width:2px}
-button:disabled{opacity:.45;cursor:not-allowed}
-.result.success{border-color:#2f6e46}
-.result.warn{border-color:#9a6d00}
-.result.error{border-color:var(--accent)}
-.result strong{font-size:13px}
-.hint{margin:0}
-footer{border-top:1px solid var(--line);padding-top:10px}
+:root{color-scheme:light;--silver:#c0c0c0;--light:#fff;--mid:#808080;--dark:#404040;--navy:#000080;--blue:#1084d0;--cream:#ffffcc;--ink:#000;--green:#00ff00;--red:#c00000}
+*{box-sizing:border-box;border-radius:0!important}
+html{background:#d4d0c8}
+body{margin:0;background:radial-gradient(#fff 18%,transparent 20%) 0 0/4px 4px,#c0c0c0;color:var(--ink);font-family:Tahoma,"MS Sans Serif","Segoe UI",sans-serif;font-size:13px}
+button,input,select,textarea{font:inherit;color:#000}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px dotted #000;outline-offset:2px}
+.assistShell{min-width:300px;padding:7px 7px 92px;display:grid;gap:8px}
+.window{background:var(--silver);border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:1px 1px 0 #000}
+.titleBar,.sectionBar{min-height:28px;padding:5px 7px;display:flex;align-items:center;justify-content:space-between;gap:8px;background:linear-gradient(90deg,var(--navy),var(--blue));color:#fff;font-weight:900;font-size:11px;letter-spacing:.02em}
+.siteBadge{background:#000;color:var(--green);border:1px solid #fff;padding:3px 5px;font:900 9px/1.1 "Courier New",monospace;text-transform:uppercase;white-space:nowrap}
+.windowBody{margin:3px;padding:10px;background:#efefef;border:2px solid;border-color:#808080 #fff #fff #808080}
+.heroBody{background:var(--cream)}
+.eyebrow{margin:0 0 4px;font:900 10px/1.2 "Courier New",monospace;letter-spacing:.08em}
+h1{margin:0;font:900 24px/1.02 Arial,Helvetica,sans-serif;letter-spacing:-.04em;color:var(--navy)}
+.lede{margin:7px 0 0;line-height:1.35;font-size:12px}
+.contextBody{display:grid;gap:4px;background:#fff}.contextBody strong{font-size:13px}.contextBody span,.hint,.actionDock small{font-size:11px;line-height:1.4;color:#404040}
+.formBody{display:grid;gap:10px}.savedSongBlock{display:grid;gap:6px}.songPickerRow{display:grid;grid-template-columns:minmax(0,1fr) 70px;gap:6px}.hint{margin:0}
+.groove{height:2px;border-top:1px solid #808080;border-bottom:1px solid #fff}
+.fieldGroup{margin:0;padding:8px;display:grid;gap:8px;border:2px solid;border-color:#808080 #fff #fff #808080;background:#dcdcdc}.fieldGroup legend{padding:0 5px;font-size:10px;font-weight:900;text-transform:uppercase;background:#dcdcdc}.fieldGroup label,.savedSongBlock>label{display:grid;gap:4px;font-size:10px;font-weight:900;text-transform:uppercase}.fieldGroup label em{font-style:normal;font-weight:400;color:#404040;text-transform:none}
+input,select,textarea{width:100%;min-width:0;border:2px solid;border-color:#404040 #fff #fff #404040;background:#fff;padding:8px 9px;font-size:14px;text-transform:none;letter-spacing:normal}input,select{min-height:39px}textarea{resize:vertical;min-height:70px}
+button{border:2px solid;border-color:#fff #404040 #404040 #fff;background:#c0c0c0;padding:8px 10px;min-height:39px;cursor:pointer;font-weight:900}button:active{border-color:#404040 #fff #fff #404040;padding-top:9px;padding-left:11px}button:disabled{color:#808080;text-shadow:1px 1px #fff;cursor:not-allowed}.secondaryButton{width:100%}
+.resultWindow{display:grid;gap:3px;padding:8px 9px;background:#000;color:#00ff00;border:2px solid;border-color:#808080 #fff #fff #808080;font-family:"Courier New",monospace}.resultWindow strong{font-size:11px;text-transform:uppercase}.resultWindow span{font-size:10px;line-height:1.35;color:#fff}.resultWindow.success{background:#003300}.resultWindow.warn{background:#5b4a00}.resultWindow.error{background:#600000}
+.actionDock{position:fixed;left:7px;right:7px;bottom:7px;z-index:20;display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:6px;background:#c0c0c0;border:2px solid;border-color:#fff #404040 #404040 #fff;box-shadow:1px 1px 0 #000}.actionDock .primaryButton{background:#000080;color:#fff;border-color:#1084d0 #000040 #000040 #1084d0}.actionDock .secondaryAction{background:#c0c0c0;color:#000}.actionDock small{grid-column:1/-1;text-align:center;font:9px/1.2 "Courier New",monospace;text-transform:uppercase}
+@media(pointer:coarse){button,input,select{min-height:44px}.actionDock button{min-height:44px}}
+@media(max-width:360px){.assistShell{padding-inline:5px}.actionDock{left:5px;right:5px}.songPickerRow{grid-template-columns:1fr}.actionDock{grid-template-columns:1fr}.actionDock small{grid-column:auto}h1{font-size:21px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
