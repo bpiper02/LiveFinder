@@ -1,6 +1,12 @@
 (() => {
   const { parseReviewerUrl } = globalThis.LiveFinderUrl || {};
-  if (!parseReviewerUrl) return;
+  const { bestReviewTarget } = globalThis.LiveFinderReviewLinks || {};
+  if (!parseReviewerUrl || !bestReviewTarget) return;
+
+  const SOURCE_IN = 'livefinder-discover-isolated';
+  const SOURCE_OUT = 'livefinder-discover-main';
+  const pendingProbes = new Map();
+  let probeSeq = 0;
 
   const norm = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const visible = el => {
@@ -51,77 +57,6 @@
     return String(card.innerText || card.textContent || '').split(/\n+/).map(x => x.trim()).find(x => x && x.length <= 120 && !/^live$/i.test(x) && !/^\d[\d,]*\s+submissions?$/i.test(x)) || '';
   }
 
-  function platformFor(url) {
-    const host = url.hostname.toLowerCase().replace(/^www\./, '');
-    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'TikTok';
-    if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be') return 'YouTube';
-    if (host === 'twitch.tv' || host.endsWith('.twitch.tv')) return 'Twitch';
-    if (host === 'kick.com' || host.endsWith('.kick.com')) return 'Kick';
-    if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'Instagram';
-    return '';
-  }
-
-  function normalizeStream(raw, isLive) {
-    let url;
-    try { url = new URL(String(raw || '').replace(/\\u002F/gi, '/').replace(/\\\//g, '/')); } catch { return null; }
-    const platform = platformFor(url);
-    if (!platform) return null;
-    url.hash = '';
-
-    const lowerPath = url.pathname.toLowerCase();
-    let score = 20;
-    let derived = false;
-    let confidence = 'social';
-
-    if (/\/live(?:\/|$)/.test(lowerPath) || (platform === 'YouTube' && /\/watch(?:\/|$)/.test(lowerPath))) {
-      score = 140;
-      confidence = 'direct';
-    } else if (platform === 'Twitch' || platform === 'Kick') {
-      score = isLive ? 120 : 80;
-      confidence = isLive ? 'direct' : 'social';
-    } else if (isLive && platform === 'TikTok' && /^\/@[^/]+\/?$/i.test(url.pathname)) {
-      url.pathname = `${url.pathname.replace(/\/$/, '')}/live`;
-      score = 125;
-      derived = true;
-      confidence = 'derived-live';
-    } else if (isLive && platform === 'YouTube' && (/^\/@[^/]+\/?$/i.test(url.pathname) || /^\/channel\/[^/]+\/?$/i.test(url.pathname))) {
-      url.pathname = `${url.pathname.replace(/\/$/, '')}/live`;
-      score = 115;
-      derived = true;
-      confidence = 'derived-live';
-    } else if (platform === 'TikTok' || platform === 'YouTube') {
-      score = 70;
-    } else if (platform === 'Instagram') {
-      score = 35;
-    }
-
-    return { streamUrl: url.toString(), streamPlatform: platform, streamConfidence: confidence, streamDerived: derived, score };
-  }
-
-  function streamForCard(card) {
-    const text = norm(card.innerText || card.textContent || '');
-    const isLive = /(^|\s)live($|\s)|live now|currently live|watch live|on air/.test(text);
-    const candidates = [];
-
-    for (const anchor of card.querySelectorAll('a[href]')) {
-      const candidate = normalizeStream(anchor.href, isLive);
-      if (!candidate) continue;
-      const label = norm(`${anchor.getAttribute('aria-label') || ''} ${anchor.title || ''} ${anchor.textContent || ''}`);
-      if (label.includes(candidate.streamPlatform.toLowerCase())) candidate.score += 15;
-      candidates.push(candidate);
-    }
-
-    const html = String(card.outerHTML || '');
-    const urls = html.match(/https?:\\?\/\\?\/[^"'<>\s]+/gi) || [];
-    for (const raw of urls) {
-      const candidate = normalizeStream(raw, isLive);
-      if (candidate) candidates.push(candidate);
-    }
-
-    candidates.sort((a, b) => b.score - a.score);
-    return candidates[0] || null;
-  }
-
   function reviewerHandleFromCard(card) {
     for (const el of [card, ...card.querySelectorAll('[href],[data-href],[data-url],[data-to],[to]')]) {
       for (const attr of ['href', 'data-href', 'data-url', 'data-to', 'to']) {
@@ -131,6 +66,76 @@
       }
     }
     return '';
+  }
+
+  function isLiveCard(card) {
+    const text = norm(card.innerText || card.textContent || '');
+    return /(^|\s)live($|\s)|live now|currently live|watch live|on air/.test(text);
+  }
+
+  function domCandidates(card) {
+    const values = [];
+    for (const anchor of card.querySelectorAll('a[href]')) {
+      values.push({
+        value: anchor.href,
+        hint: `${anchor.getAttribute('data-testid') || ''} ${anchor.className || ''} href`,
+        label: `${anchor.getAttribute('aria-label') || ''} ${anchor.title || ''} ${anchor.textContent || ''}`
+      });
+    }
+    for (const el of card.querySelectorAll('[data-href],[data-url],[data-link],[data-stream-url]')) {
+      for (const attr of ['data-href', 'data-url', 'data-link', 'data-stream-url']) {
+        const value = el.getAttribute(attr);
+        if (value) values.push({ value, hint: attr, label: el.textContent || '' });
+      }
+    }
+    const html = String(card.outerHTML || '');
+    const urls = html.match(/https?:\\?\/\\?\/[^"'<>\s]+/gi) || [];
+    for (const value of urls) values.push({ value, hint: 'serialized-card', label: '' });
+    return values;
+  }
+
+  function probeReact(card) {
+    const token = `review-link-${Date.now()}-${++probeSeq}`;
+    const previous = card.getAttribute('data-livefinder-probe-id');
+    const probeId = `review-${Date.now()}-${probeSeq}`;
+    card.setAttribute('data-livefinder-probe-id', probeId);
+
+    return new Promise(resolve => {
+      const timeout = setTimeout(() => {
+        pendingProbes.delete(token);
+        if (previous == null) card.removeAttribute('data-livefinder-probe-id');
+        else card.setAttribute('data-livefinder-probe-id', previous);
+        resolve([]);
+      }, 550);
+
+      pendingProbes.set(token, payload => {
+        clearTimeout(timeout);
+        pendingProbes.delete(token);
+        if (previous == null) card.removeAttribute('data-livefinder-probe-id');
+        else card.setAttribute('data-livefinder-probe-id', previous);
+        resolve(Array.isArray(payload?.candidates) ? payload.candidates : []);
+      });
+
+      window.postMessage({ source: SOURCE_IN, type: 'PROBE_REACT_CARD', token, probeId }, '*');
+    });
+  }
+
+  window.addEventListener('message', event => {
+    if (event.source !== window) return;
+    const message = event.data;
+    if (!message || message.source !== SOURCE_OUT || message.type !== 'REACT_CARD_PROBE_RESULT') return;
+    const done = pendingProbes.get(String(message.token || ''));
+    if (done) done(message);
+  });
+
+  async function reviewTargetForCard(card) {
+    const live = isLiveCard(card);
+    const values = domCandidates(card);
+    const reactCandidates = await probeReact(card);
+    for (const candidate of reactCandidates) {
+      values.push({ value: candidate.value, hint: candidate.hint || 'react', label: '' });
+    }
+    return bestReviewTarget(values, { isLive: live });
   }
 
   async function enrich() {
@@ -145,13 +150,17 @@
     const byName = new Map(items.map(item => [norm(item.displayName), item]));
 
     for (const card of sessionCards()) {
-      const stream = streamForCard(card);
-      if (!stream) continue;
+      const target = await reviewTargetForCard(card);
+      if (!target) continue;
       const handle = reviewerHandleFromCard(card);
       const item = (handle && byHandle.get(handle)) || byName.get(norm(extractDisplayName(card)));
       if (!item) continue;
-      if (item.streamUrl === stream.streamUrl && item.streamPlatform === stream.streamPlatform) continue;
-      Object.assign(item, stream);
+      if (item.streamUrl === target.streamUrl && item.streamPlatform === target.streamPlatform && item.streamConfidence === target.streamConfidence) continue;
+      Object.assign(item, target, {
+        reviewUrl: target.streamUrl,
+        reviewPlatform: target.streamPlatform,
+        reviewConfidence: target.streamConfidence
+      });
       changed = true;
     }
 
@@ -163,7 +172,7 @@
         scrapedAt: Number(pool.scrapedAt || Date.now()),
         diagnostics: pool.diagnostics || null
       });
-      console.log('[LiveFinder] Discover stream links enriched');
+      console.log('[LiveFinder] Discover direct review links enriched');
     } catch {}
   }
 
@@ -173,8 +182,8 @@
     timer = setTimeout(enrich, delay);
   }
 
-  schedule(800);
+  schedule(700);
   const observer = new MutationObserver(() => schedule());
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
-  setInterval(enrich, 4000);
+  setInterval(enrich, 5000);
 })();
