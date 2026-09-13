@@ -6,8 +6,12 @@
   const parsed = parseReviewerUrl(location.href, location.origin);
   if (!parsed?.handle || /\/discover(?:\/|$)/i.test(location.pathname)) return;
 
+  const SOURCE_IN = 'livefinder-reviewer-isolated';
+  const SOURCE_OUT = 'livefinder-reviewer-main';
+  const pending = new Map();
   let running = false;
   let lastTarget = '';
+  let seq = 0;
 
   function valuesFromPage() {
     const values = [];
@@ -25,8 +29,6 @@
       }
     }
 
-    // Hydration/state scripts often contain the creator's external live URL even
-    // when the visible UI only exposes a Nero link.
     for (const script of [...document.scripts].slice(0, 80)) {
       const text = String(script.textContent || '');
       if (!text || text.length > 1_500_000) continue;
@@ -47,11 +49,41 @@
     return /\blive now\b|\bcurrently live\b|\bwatch live\b|\bon air\b/.test(text);
   }
 
+  function probeReact() {
+    const token = `reviewer-${Date.now()}-${++seq}`;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => {
+        pending.delete(token);
+        resolve([]);
+      }, 650);
+      pending.set(token, candidates => {
+        clearTimeout(timer);
+        pending.delete(token);
+        resolve(Array.isArray(candidates) ? candidates : []);
+      });
+      window.postMessage({ source: SOURCE_IN, type: 'PROBE_REVIEWER_REACT', token }, '*');
+    });
+  }
+
+  window.addEventListener('message', event => {
+    if (event.source !== window) return;
+    const message = event.data;
+    if (!message || message.source !== SOURCE_OUT || message.type !== 'REVIEWER_REACT_RESULT') return;
+    const done = pending.get(String(message.token || ''));
+    if (done) done(message.candidates || []);
+  });
+
   async function enrich() {
     if (running) return;
     running = true;
     try {
-      const target = bestReviewTarget(valuesFromPage(), { isLive: isLivePage() });
+      const values = valuesFromPage();
+      const reactCandidates = await probeReact();
+      for (const candidate of reactCandidates) {
+        values.push({ value: candidate.value, hint: candidate.hint || 'reviewer-react', label: '' });
+      }
+
+      const target = bestReviewTarget(values, { isLive: isLivePage() });
       if (!target || target.streamUrl === lastTarget) return;
 
       const response = await chrome.runtime.sendMessage({ type: 'GET_NERO_POOL' });
