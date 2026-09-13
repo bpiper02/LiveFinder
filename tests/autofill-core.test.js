@@ -30,14 +30,18 @@ assert.ok(scoreFieldFromText('phone', 'Phone number', { type: 'tel', autocomplet
 assert.ok(scoreFieldFromText('songUrl', 'Track link', { type: 'url' }) >= 70);
 
 const assist = fs.readFileSync('extension/assist.js', 'utf8');
+const providerAssist = fs.readFileSync('extension/provider-assist.js', 'utf8');
 const sidepanel = fs.readFileSync('extension/sidepanel.js', 'utf8');
 const bridge = fs.readFileSync('extension/bridge.js', 'utf8');
 assert.match(assist, /push\(document\)/);
 assert.doesNotMatch(assist, /root === document \|\| !context\.formVisible/);
+assert.match(providerAssist, /push\(document\)/);
+assert.match(providerAssist, /LIVEFINDER_AUTOFILL_CURRENT/);
 assert.match(sidepanel, /async function sendTabMessage/);
-assert.match(sidepanel, /\$\('autofillCurrent'\)\.disabled = !fallback/);
-assert.match(sidepanel, /never turn Autofill into a dead stop-sign control/);
-assert.match(sidepanel, /Open a submission step, then press Autofill this step/);
+assert.match(sidepanel, /\$\('autofillCurrent'\)\.disabled = !supported/);
+assert.match(sidepanel, /LiveFinder currently supports Nero, AuxChord, and Tune Tavern review pages/);
+assert.match(sidepanel, /Open a supported reviewer first/);
+assert.match(sidepanel, /Assist is waking on this tab/);
 assert.match(bridge, /DEFAULT_TIMEOUT_MS = 6000/);
 assert.match(bridge, /BRIDGE_CONNECTING/);
 assert.doesNotMatch(bridge, /console\.warn\('\[LiveFinder\] bridge not ready/);
