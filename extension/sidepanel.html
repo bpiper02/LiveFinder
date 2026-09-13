@@ -17,7 +17,7 @@
       <div class="windowBody heroBody">
         <p class="eyebrow">MUSIC SUBMISSION HELPER</p>
         <h1>Autofill the form you're on.</h1>
-        <p class="lede">Pick a saved track, review the details, then fill this step or run the proven free Nero flow.</p>
+        <p class="lede">Pick a saved track, review the details, then fill the current step or use full auto where the provider is supported.</p>
       </div>
     </header>
 
@@ -50,6 +50,15 @@
           <label>Artist<input id="artist" autocomplete="name" /></label>
           <label>Song title<input id="title" autocomplete="off" /></label>
           <label>Song link<input id="songUrl" type="url" inputmode="url" autocomplete="url" /></label>
+          <label id="authorshipRow">Authorship <em>AuxChord asks this</em>
+            <select id="authorship">
+              <option value="">Choose when required…</option>
+              <option value="human-generated">Human Generated</option>
+              <option value="ai-assisted">AI-Assisted</option>
+              <option value="hybrid">Human + AI Hybrid</option>
+              <option value="fully-ai">Fully AI-Generated</option>
+            </select>
+          </label>
         </fieldset>
 
         <fieldset class="fieldGroup">
@@ -68,7 +77,7 @@
 
     <section id="result" class="resultWindow" aria-live="polite">
       <strong>Ready.</strong>
-      <span>Open a Nero reviewer page to begin.</span>
+      <span>Open a supported reviewer page to begin.</span>
     </section>
 
     <section class="actionDock" aria-label="Submission actions">
@@ -78,6 +87,7 @@
       <small>LiveFinder never authorizes a charge.</small>
     </section>
   </main>
+  <script src="provider-utils.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
