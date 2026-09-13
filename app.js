@@ -1,4 +1,5 @@
 const KEY='nero-router-state-v1';
+const PAYMENT_POLICY_KEY='livefinder-payment-policy';
 const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch{return{}}})();
 state.songs ||= [];
 state.reviewers ||= [];
@@ -18,6 +19,7 @@ const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const paymentPolicy=()=>localStorage.getItem(PAYMENT_POLICY_KEY)==='show-paid'?'show-paid':'free-only';
 let bridgeReady=false;
 let bridgeVersion='';
 let staleReloadScheduled=false;
@@ -143,6 +145,7 @@ function statusText(s){
   const ahead=Number.isFinite(watch?.latestAhead)?watch.latestAhead:s.queueAhead;
   if(s.status==='submitted')return ahead!=null?`submitted · ${ahead} ahead`:'submitted';
   if(s.status==='queued')return ahead!=null?`queued · ${ahead} ahead`:'queued';
+  if(s.status==='payment required')return s.paymentPolicy==='show-paid'?'payment required · manual':'payment required · skipped';
   return s.status||'unknown';
 }
 
@@ -345,6 +348,15 @@ $('scanQueuesNow').onclick=()=>{
   window.postMessage({source:'livefinder-web',type:'SCAN_OPEN_NERO_TABS'},'*');
 };
 
+const paymentPolicySelect=$('paymentPolicy');
+if(paymentPolicySelect){
+  paymentPolicySelect.value=paymentPolicy();
+  paymentPolicySelect.addEventListener('change',()=>{
+    const next=paymentPolicySelect.value==='show-paid'?'show-paid':'free-only';
+    localStorage.setItem(PAYMENT_POLICY_KEY,next);
+  });
+}
+
 function reviewerForUrl(url,label=''){
   let normalized;
   try{normalized=normalizeNeroUrl(url);}catch{return null;}
@@ -383,7 +395,8 @@ function startSubmission(reviewer,songId){
   if(!bridgeReady){alert('LiveFinder extension is not connected yet. Refresh this page after reloading the extension, then try again.');window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');return;}
 
   const runId=uid();
-  const payload={source:'livefinder',type:'PREPARE_NERO_SUBMISSION',runId,song,reviewer,createdAt:Date.now()};
+  const currentPaymentPolicy=paymentPolicy();
+  const payload={source:'livefinder',type:'PREPARE_NERO_SUBMISSION',runId,song,reviewer,paymentPolicy:currentPaymentPolicy,createdAt:Date.now()};
   const base=reviewer.neroUrl.split('#')[0];
   let settled=false;
   const cleanup=()=>window.removeEventListener('message',onAck);
@@ -394,7 +407,7 @@ function startSubmission(reviewer,songId){
     if(msg.type==='NERO_SUBMISSION_STORED'){
       settled=true;cleanup();
       const item=poolItemForReviewer(reviewer.neroUrl);
-      const submission={id:runId,reviewerUrl:reviewer.neroUrl,reviewer:canonicalReviewerLabel(reviewer.neroUrl,reviewer.label),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',queueAhead:null};
+      const submission={id:runId,reviewerUrl:reviewer.neroUrl,reviewer:canonicalReviewerLabel(reviewer.neroUrl,reviewer.label),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',paymentPolicy:currentPaymentPolicy,queueAhead:null};
       if(item)copyPoolMetadata(submission,item);
       state.submissions.unshift(submission);
       save();
@@ -425,9 +438,27 @@ function findMatchingSubmission(data){
 
 function reconcileStatus(queue,result){
   let changed=false;
-  if(queue){const row=findMatchingSubmission(queue);if(row&&row.status!=='submitted'){row.status='queued';if(Number.isFinite(queue.ahead))row.queueAhead=queue.ahead;changed=true;}}
-  if(result){const row=findMatchingSubmission(result);if(row){row.status='submitted';if(Number.isFinite(result.ahead))row.queueAhead=result.ahead;changed=true;}}
-  if(changed){save();renderHistory();}
+  if(queue){
+    const row=findMatchingSubmission(queue);
+    if(row&&!['submitted','payment required'].includes(row.status)){
+      row.status='queued';
+      if(Number.isFinite(queue.ahead))row.queueAhead=queue.ahead;
+      changed=true;
+    }
+  }
+  if(result){
+    const row=findMatchingSubmission(result);
+    if(row){
+      const nextStatus=String(result.status||'submitted').toLowerCase();
+      row.status=nextStatus;
+      if(Number.isFinite(result.ahead))row.queueAhead=result.ahead;
+      if(result.paymentPolicy)row.paymentPolicy=result.paymentPolicy;
+      if(result.reason)row.paymentReason=String(result.reason);
+      if(Array.isArray(result.prices))row.paymentPrices=result.prices.map(String);
+      changed=true;
+    }
+  }
+  if(changed){save();renderHistory();renderPool(true);}
 }
 
 function applyWatchState(response){
