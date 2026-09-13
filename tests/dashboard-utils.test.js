@@ -59,6 +59,8 @@ const app = fs.readFileSync('app.js', 'utf8');
 const poolTabs = fs.readFileSync('pool-tabs.js', 'utf8');
 const poolTabsCss = fs.readFileSync('pool-tabs.css', 'utf8');
 const poolDisclosureCss = fs.readFileSync('pool-disclosure.css', 'utf8');
+const dashboardSync = fs.readFileSync('dashboard-sync.js', 'utf8');
+const musicQuotes = fs.readFileSync('music-quotes.js', 'utf8');
 const styles = fs.readFileSync('styles.css', 'utf8');
 const baseCss = fs.readFileSync('retro-base.css', 'utf8');
 const componentCss = fs.readFileSync('retro-components.css', 'utf8');
@@ -79,11 +81,18 @@ assert.match(index, /id="poolOpen"/);
 assert.match(index, /id="poolOther"/);
 assert.doesNotMatch(index, /class="poolGrid"/);
 assert.doesNotMatch(index, /hotBadge/);
+assert.doesNotMatch(index, /class="systemPanel"/);
+assert.match(index, /id="musicQuote"/);
+assert.match(index, /class="utilityFooter window"/);
+assert.match(index, /Extension: <strong id="connectionState">/);
+assert.match(index, /<strong id="statSongs">00<\/strong>/);
 assert.doesNotMatch(index, /0[1-4] \/\/ (?:REVIEWER POOL|SONG LIBRARY|SAVED REVIEWERS|QUEUE \/ HISTORY)/);
+
 assert.match(app, /explicitSaved/);
 assert.match(app, /function pastReviewerRecords\(\)/);
 assert.match(app, /function submitPoolReviewer[\s\S]*?startSubmission\(reviewer,songId\)/);
 assert.doesNotMatch(app, /function submitPoolReviewer[\s\S]*?state\.reviewers\.push\(reviewer\)[\s\S]*?function submitToReviewer/);
+
 assert.match(poolTabs, /library\.open=false/);
 assert.match(poolTabs, /chooseUsableFilter/);
 assert.match(poolTabs, /MutationObserver/);
@@ -95,6 +104,22 @@ assert.match(poolTabs, /Song to submit/);
 assert.match(poolTabs, /Pick once, then choose reviewers below/);
 assert.match(poolTabs, /data-pool-submit-button/);
 assert.match(poolTabs, /dispatchEvent\(new Event\('change'/);
+assert.match(poolTabs, /number<100\?String\(number\)\.padStart\(2,'0'\):String\(number\)/);
+assert.match(poolTabs, /last scan \$\{formatAge\(lastScrapedAt\)\}/);
+assert.match(poolTabs, /if\(chip&&chip\.textContent\.trim\(\)\.toLowerCase\(\)==='live'\)chip\.hidden=true/);
+assert.match(poolTabs, /hours<24/);
+assert.match(poolTabs, /days<7/);
+assert.match(dashboardSync, /number < 100 \? String\(number\)\.padStart\(2, '0'\) : String\(number\)/);
+
+const quoteRows = [...musicQuotes.matchAll(/^\s*\["([^"]+)","([^"]+)"\],?$/gm)];
+assert.equal(quoteRows.length, 100, 'quote rail should ship with 100 musician quotes');
+for (const [, author, text] of quoteRows) {
+  assert.ok(author.trim().length > 0);
+  assert.ok(text.trim().split(/\s+/).length <= 20, `quote is too long for rail: ${author}`);
+}
+assert.match(musicQuotes, /animationiteration/);
+assert.match(musicQuotes, /LiveFinderMusicQuotes/);
+
 assert.match(poolTabsCss, /grid-template-columns:repeat\(auto-fit,minmax\(230px,1fr\)\)/);
 assert.match(poolTabsCss, /data-active-filter="all"/);
 assert.match(poolTabsCss, /\.poolActionBar/);
@@ -108,7 +133,11 @@ assert.match(baseCss, /border-radius:0!important/);
 assert.match(baseCss, /outline:2px dotted #000/);
 assert.match(baseCss, /background-size:4px 4px/);
 assert.match(baseCss, /background:linear-gradient\(90deg,#000080,#1084d0\)/);
-assert.match(componentCss, /constructionFooter/);
+assert.match(baseCss, /\.heroBody\{display:block/);
+assert.match(baseCss, /\.quoteRail/);
+assert.match(componentCss, /\.utilityFooter/);
+assert.match(componentCss, /\.footerMeta/);
+assert.doesNotMatch(componentCss, /\.poolStatus\{[^}]*text-transform:uppercase/);
 assert.match(componentCss, /reviewerLibraryGrid/);
 assert.match(responsiveCss, /@media\(pointer:coarse\).*min-height:44px/);
 assert.match(responsiveCss, /@media\(max-width:680px\)/);
