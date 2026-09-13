@@ -20,6 +20,11 @@
       hints: ['email address', 'e-mail address', 'contact email', 'email', 'e-mail'],
       negative: []
     },
+    phone: {
+      label: 'Phone',
+      hints: ['phone number', 'mobile number', 'cell phone', 'cell number', 'contact number', 'telephone number', 'telephone', 'mobile', 'phone'],
+      negative: ['fax', 'order number', 'catalog number', 'reference number', 'phone model']
+    },
     instagram: {
       label: 'Instagram',
       hints: ['instagram handle', 'instagram username', 'ig handle', 'ig username', 'instagram', 'ig'],
@@ -63,6 +68,7 @@
     const type = normalize(meta.type);
     const autocomplete = normalize(meta.autocomplete);
     if (fieldKey === 'email' && (type === 'email' || autocomplete === 'email')) score += 32;
+    if (fieldKey === 'phone' && (type === 'tel' || autocomplete === 'tel' || autocomplete.startsWith('tel '))) score += 32;
     if (fieldKey === 'songUrl' && type === 'url') score += 18;
     if (fieldKey === 'note' && meta.multiline) score += 8;
 
