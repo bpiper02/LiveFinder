@@ -39,7 +39,7 @@
     },
     {
       "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
-      "js": ["url-utils.js", "review-links.js", "reviewer-enrich.js", "autofill-core.js", "fullauto-contact.js", "assist.js", "payment-guard.js", "addon-bypass.js", "nero.js", "queue-monitor.js"],
+      "js": ["url-utils.js", "review-links.js", "reviewer-enrich.js", "autofill-core.js", "fullauto-contact.js", "assist.js", "payment-guard.js", "payment-boundary.js", "addon-bypass.js", "nero.js", "queue-monitor.js"],
       "run_at": "document_idle"
     },
     {
