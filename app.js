@@ -4,69 +4,61 @@ state.songs ||= [];
 state.reviewers ||= [];
 state.submissions ||= [];
 
+const {
+  normalizeNeroUrl,
+  reviewerKey,
+  reviewerLabel,
+  bestReviewerLabel,
+  filterAvailablePool,
+  poolSignature
+}=globalThis.LiveFinderDashboard||{};
+if(!normalizeNeroUrl||!reviewerKey||!filterAvailablePool)throw new Error('LiveFinder dashboard helpers failed to load.');
+
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
 let bridgeReady=false;
 let bridgeVersion='';
 let staleReloadScheduled=false;
 let discoveredPool=[];
+let discoveredPoolSignature='';
 let poolScrapedAt=0;
 let scanStartedAt=0;
 let queueWatches=[];
 let queueAlertsEnabled=true;
+let poolInteractionLocked=false;
+let pendingPoolRender=false;
 
-function normalizeNeroUrl(input){
-  let url=String(input||'').trim();
-  if(!/^https?:\/\//i.test(url))url='https://'+url;
-  const parsed=new URL(url);
-  if(!/(^|\.)nero\.fan$/i.test(parsed.hostname))throw new Error('Not a Nero URL');
-  parsed.hostname='www.nero.fan';
-  parsed.hash='';
-  parsed.search='';
-  parsed.pathname=parsed.pathname.replace(/\/+$/,'')||'/';
-  return parsed.toString();
-}
-
-function reviewerKey(url){
-  try{return decodeURIComponent(new URL(normalizeNeroUrl(url)).pathname.split('/').filter(Boolean)[0]||'').toLowerCase();}catch{return '';}
-}
-
-function reviewerLabel(url){
-  try{
-    const parsed=new URL(url);
-    const parts=parsed.pathname.split('/').filter(Boolean);
-    const suffixes=new Set(['live','submit','submission','review']);
-    let slug=parts.at(-1)||'nero';
-    if(suffixes.has(slug.toLowerCase())&&parts.length>1)slug=parts.at(-2);
-    slug=decodeURIComponent(slug);
-    return slug.startsWith('@')?slug:`@${slug}`;
-  }catch{return 'Nero reviewer';}
+function poolItemForReviewer(url){
+  const key=reviewerKey(url);
+  if(!key)return null;
+  return discoveredPool.find(item=>reviewerKey(item?.neroUrl||item?.profileUrl||'')===key)||null;
 }
 
 function canonicalReviewerLabel(url,fallback=''){
-  const bad=new Set(['','@live','@submit','@submission','@review','live','submit','submission','review']);
-  const saved=state.reviewers.find(r=>{
-    try{return normalizeNeroUrl(r.neroUrl)===normalizeNeroUrl(url);}catch{return false;}
+  const saved=state.reviewers.find(r=>reviewerKey(r.neroUrl)===reviewerKey(url));
+  const poolItem=poolItemForReviewer(url);
+  return bestReviewerLabel({
+    url,
+    poolDisplayName:poolItem?.displayName||'',
+    savedLabel:saved?.label||'',
+    fallback
   });
-  if(saved?.label&&!bad.has(String(saved.label).toLowerCase()))return saved.label;
-  if(fallback&&!bad.has(String(fallback).toLowerCase()))return fallback;
-  return reviewerLabel(url);
 }
 
 function migrateState(){
-  const badLegacyLabels=new Set(['@live','@submit','@submission','@review']);
   state.reviewers=state.reviewers.map(r=>({
     id:r.id||uid(),
     neroUrl:r.neroUrl,
-    label:(!r.label||badLegacyLabels.has(String(r.label).toLowerCase()))?reviewerLabel(r.neroUrl):(r.label||r.name)
+    label:bestReviewerLabel({url:r.neroUrl,savedLabel:r.label||r.name||''})
   })).filter(r=>r.neroUrl);
 
   state.submissions=state.submissions.map(s=>({
+    ...s,
     id:s.id||uid(),
     reviewerUrl:s.reviewerUrl||'',
-    reviewer:canonicalReviewerLabel(s.reviewerUrl,s.reviewer),
+    reviewer:bestReviewerLabel({url:s.reviewerUrl,fallback:s.reviewer||''}),
     songId:s.songId||'',
     song:s.song||'',
     status:s.status||'unknown',
@@ -99,44 +91,80 @@ function renderQueueControls(){
 }
 
 function poolCard(item){
-  const label=item.displayName||`@${item.handle}`;
-  const songs=state.songs.length?`<select data-pool-url="${esc(item.neroUrl)}" data-pool-label="${esc(label)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${s.id}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>';
+  const label=item.displayName||reviewerLabel(item.neroUrl);
+  const songs=state.songs.length?`<select data-pool-url="${esc(item.neroUrl)}" data-pool-label="${esc(label)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>';
   return `<div class="card poolCard"><div class="poolTop"><div><strong>${esc(label)}</strong><small>${esc(item.neroUrl)}</small></div><span class="statusChip">${esc(item.status)}</span></div>${songs}</div>`;
 }
 
-function renderPool(){
-  const live=discoveredPool.filter(x=>x.status==='live');
-  const open=discoveredPool.filter(x=>x.status==='open');
-  const other=discoveredPool.filter(x=>!['live','open'].includes(x.status));
-  $('poolLive').innerHTML=live.length?live.map(poolCard).join(''):'<p class="empty">No live reviewers detected.</p>';
-  $('poolOpen').innerHTML=open.length?open.map(poolCard).join(''):'<p class="empty">No open/upcoming reviewers detected.</p>';
-  $('poolOther').innerHTML=other.length?other.map(poolCard).join(''):'<p class="empty">Nothing else detected.</p>';
-  if(poolScrapedAt){
-    const age=Math.max(0,Math.round((Date.now()-poolScrapedAt)/1000));
-    $('poolStatus').textContent=`${discoveredPool.length} found · ${age<60?`${age}s ago`:`${Math.round(age/60)}m ago`}`;
-  }else $('poolStatus').textContent='No scan yet.';
-  document.querySelectorAll('select[data-pool-url]').forEach(el=>el.onchange=()=>submitPoolReviewer(el.dataset.poolUrl,el.dataset.poolLabel,el.value));
+function columnHtml(items,emptyCopy){
+  return items.length?items.map(poolCard).join(''):`<p class="empty">${emptyCopy}</p>`;
 }
 
-function render(){
+function setColumnHtml(id,items,emptyCopy){
+  const el=$(id);
+  if(!el)return;
+  const songsSig=state.songs.map(s=>`${s.id}:${s.artist}:${s.title}`).join('|');
+  const signature=`${poolSignature(items)}::${songsSig}`;
+  if(el.dataset.livefinderSignature===signature)return;
+  el.innerHTML=columnHtml(items,emptyCopy);
+  el.dataset.livefinderSignature=signature;
+}
+
+function updatePoolStatus(availableCount){
+  if(!poolScrapedAt){$('poolStatus').textContent='No scan yet.';return;}
+  const hidden=Math.max(0,discoveredPool.length-availableCount);
+  const age=Math.max(0,Math.round((Date.now()-poolScrapedAt)/1000));
+  const ageText=age<60?`${age}s ago`:`${Math.round(age/60)}m ago`;
+  $('poolStatus').textContent=`${availableCount} available${hidden?` · ${hidden} submitted`:''} · ${ageText}`;
+}
+
+function renderPool(force=false){
+  if(poolInteractionLocked&&!force){
+    pendingPoolRender=true;
+    return;
+  }
+  pendingPoolRender=false;
+  const available=filterAvailablePool(discoveredPool,state.submissions);
+  const live=available.filter(x=>x.status==='live');
+  const open=available.filter(x=>x.status==='open');
+  const other=available.filter(x=>!['live','open'].includes(x.status));
+  setColumnHtml('poolLive',live,'No live reviewers detected.');
+  setColumnHtml('poolOpen',open,'No open/upcoming reviewers detected.');
+  setColumnHtml('poolOther',other,'Nothing else detected.');
+  updatePoolStatus(available.length);
+}
+
+function flushPendingPoolRender(){
+  if(poolInteractionLocked||!pendingPoolRender)return;
+  renderPool();
+}
+
+function renderSongs(){
   $('songs').innerHTML=state.songs.length?state.songs.map(s=>`
-    <div class="card itemRow"><div class="itemMain"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div><button class="iconButton danger" type="button" data-action="delete-song" data-id="${s.id}">Delete</button></div>`).join(''):'<p class="empty">No songs saved yet.</p>';
+    <div class="card itemRow"><div class="itemMain"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div><button class="iconButton danger" type="button" data-action="delete-song" data-id="${esc(s.id)}">Delete</button></div>`).join(''):'<p class="empty">No songs saved yet.</p>';
+}
 
+function renderReviewers(){
   $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>`
-    <div class="card reviewer"><div><strong>${esc(r.label||reviewerLabel(r.neroUrl))}</strong><small>${esc(r.neroUrl)}</small></div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${r.id}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${s.id}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${r.id}">Delete</button></div></div>`).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
+    <div class="card reviewer"><div><strong>${esc(canonicalReviewerLabel(r.neroUrl,r.label))}</strong><small>${esc(r.neroUrl)}</small></div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${esc(r.id)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${esc(r.id)}">Delete</button></div></div>`).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
+}
 
+function renderHistory(){
   $('submissionRows').innerHTML=state.submissions.length?state.submissions.map(s=>{
     const label=canonicalReviewerLabel(s.reviewerUrl,s.reviewer);
     const href=(()=>{try{return normalizeNeroUrl(s.reviewerUrl);}catch{return ''}})();
     const reviewerCell=href?`<a class="historyReviewer" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(href)}</small></a>`:`<span>${esc(label)}</span>`;
     const watch=watchForSubmission(s);
     const watched=watch?`<small class="watchState">${watch.enabled===false?'watch paused':'watching'}${Number.isFinite(watch.latestAhead)?` · ${watch.latestAhead} ahead`:''}</small>`:'';
-    return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="statusCell"><span class="status">${esc(statusText(s))}</span>${watched}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${s.id}">Delete</button></span></div>`;
+    return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="statusCell"><span class="status">${esc(statusText(s))}</span>${watched}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${esc(s.id)}">Delete</button></span></div>`;
   }).join(''):'<p class="empty">Nothing submitted yet.</p>';
+}
 
-  document.querySelectorAll('select[data-reviewer]').forEach(el=>el.onchange=()=>submitToReviewer(el.dataset.reviewer,el.value));
-  document.querySelectorAll('[data-action]').forEach(btn=>btn.onclick=()=>handleAction(btn.dataset.action,btn.dataset.id));
-  renderPool();
+function render(){
+  renderSongs();
+  renderReviewers();
+  renderHistory();
+  renderPool(true);
   renderQueueControls();
 }
 
@@ -156,22 +184,22 @@ $('songForm').onsubmit=e=>{
   $('songForm').reset();
   $('email').value=keepEmail;
   $('instagram').value=keepInstagram;
-  render();
+  renderSongs();renderReviewers();renderPool(true);
 };
 
 $('reviewerForm').onsubmit=e=>{
   e.preventDefault();
   let url;
   try{url=normalizeNeroUrl($('neroUrl').value);}catch{alert('Enter a valid nero.fan reviewer URL.');return;}
-  if(state.reviewers.some(r=>normalizeNeroUrl(r.neroUrl).toLowerCase()===url.toLowerCase())){alert('That Nero reviewer is already in your list.');return;}
+  if(state.reviewers.some(r=>reviewerKey(r.neroUrl)===reviewerKey(url))){alert('That Nero reviewer is already in your list.');return;}
   state.reviewers.push({id:uid(),neroUrl:url,label:reviewerLabel(url)});
-  save();$('reviewerForm').reset();render();
+  save();$('reviewerForm').reset();renderReviewers();
 };
 
 $('clearHistory').onclick=()=>{
   if(!state.submissions.length)return;
   if(!confirm('Clear all submission history?'))return;
-  state.submissions=[];save();render();
+  state.submissions=[];save();renderHistory();renderPool(true);
 };
 
 $('refreshPool').onclick=()=>{
@@ -200,10 +228,16 @@ $('scanQueuesNow').onclick=()=>{
 function submitPoolReviewer(url,label,songId){
   let normalized;
   try{normalized=normalizeNeroUrl(url);}catch{return;}
-  let reviewer=state.reviewers.find(r=>normalizeNeroUrl(r.neroUrl)===normalized);
+  let reviewer=state.reviewers.find(r=>reviewerKey(r.neroUrl)===reviewerKey(normalized));
   if(!reviewer){
     reviewer={id:uid(),neroUrl:normalized,label:label||reviewerLabel(normalized)};
-    state.reviewers.push(reviewer);save();render();
+    state.reviewers.push(reviewer);
+    save();
+    renderReviewers();
+  }else if(label&&reviewer.label!==label){
+    reviewer.label=label;
+    save();
+    renderReviewers();
   }
   submitToReviewer(reviewer.id,songId);
 }
@@ -225,8 +259,12 @@ function submitToReviewer(reviewerId,songId){
     if(msg?.source!=='livefinder-extension')return;
     if(msg.type==='NERO_SUBMISSION_STORED'){
       settled=true;cleanup();
-      state.submissions.unshift({id:runId,reviewerUrl:reviewer.neroUrl,reviewer:reviewer.label||reviewerLabel(reviewer.neroUrl),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',queueAhead:null});
-      save();render();window.open(base,'_blank','noopener,noreferrer');return;
+      state.submissions.unshift({id:runId,reviewerUrl:reviewer.neroUrl,reviewer:canonicalReviewerLabel(reviewer.neroUrl,reviewer.label),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',queueAhead:null});
+      save();
+      renderHistory();
+      renderPool(true);
+      window.open(base,'_blank','noopener,noreferrer');
+      return;
     }
     if(msg.type==='NERO_SUBMISSION_STORE_FAILED'){
       settled=true;cleanup();alert(`LiveFinder extension could not start the submission. ${msg.error||'Reload the extension and refresh this page.'}`);
@@ -239,17 +277,19 @@ function submitToReviewer(reviewerId,songId){
 
 function findMatchingSubmission(data){
   if(!data)return null;
+  if(data.runId){const byRun=state.submissions.find(s=>s.id===data.runId);if(byRun)return byRun;}
   const reviewerUrl=data.reviewer?.neroUrl||'';
+  const key=reviewerKey(reviewerUrl);
   const songId=data.song?.id||'';
   const eventAt=data.completedAt||data.capturedAt||0;
-  return state.submissions.find(s=>(!reviewerUrl||s.reviewerUrl===reviewerUrl)&&(!songId||s.songId===songId)&&(!eventAt||s.createdAtMs<=eventAt))||null;
+  return state.submissions.find(s=>(!key||reviewerKey(s.reviewerUrl)===key)&&(!songId||s.songId===songId)&&(!eventAt||s.createdAtMs<=eventAt))||null;
 }
 
 function reconcileStatus(queue,result){
   let changed=false;
   if(queue){const row=findMatchingSubmission(queue);if(row&&row.status!=='submitted'){row.status='queued';if(Number.isFinite(queue.ahead))row.queueAhead=queue.ahead;changed=true;}}
   if(result){const row=findMatchingSubmission(result);if(row){row.status='submitted';if(Number.isFinite(result.ahead))row.queueAhead=result.ahead;changed=true;}}
-  if(changed){save();render();}
+  if(changed){save();renderHistory();}
 }
 
 function applyWatchState(response){
@@ -262,8 +302,44 @@ function applyWatchState(response){
     if(watch&&Number.isFinite(watch.latestAhead)&&s.queueAhead!==watch.latestAhead){s.queueAhead=watch.latestAhead;changed=true;}
   }
   if(changed)save();
-  render();
+  renderHistory();
+  renderQueueControls();
 }
+
+function poolSelectFromEvent(event){
+  const target=event.target;
+  return target instanceof Element?target.closest('select[data-pool-url]'):null;
+}
+
+document.addEventListener('pointerdown',event=>{
+  if(poolSelectFromEvent(event))poolInteractionLocked=true;
+},true);
+document.addEventListener('focusin',event=>{
+  if(poolSelectFromEvent(event))poolInteractionLocked=true;
+},true);
+document.addEventListener('focusout',event=>{
+  if(!poolSelectFromEvent(event))return;
+  setTimeout(()=>{poolInteractionLocked=false;flushPendingPoolRender();},120);
+},true);
+
+document.addEventListener('change',event=>{
+  const poolSelect=poolSelectFromEvent(event);
+  if(poolSelect){
+    const {poolUrl,poolLabel}=poolSelect.dataset;
+    const songId=poolSelect.value;
+    poolInteractionLocked=false;
+    submitPoolReviewer(poolUrl,poolLabel,songId);
+    setTimeout(flushPendingPoolRender,0);
+    return;
+  }
+  const reviewerSelect=event.target instanceof Element?event.target.closest('select[data-reviewer]'):null;
+  if(reviewerSelect)submitToReviewer(reviewerSelect.dataset.reviewer,reviewerSelect.value);
+});
+
+document.addEventListener('click',event=>{
+  const btn=event.target instanceof Element?event.target.closest('[data-action]'):null;
+  if(btn)handleAction(btn.dataset.action,btn.dataset.id);
+});
 
 window.addEventListener('message',event=>{
   if(event.source!==window)return;
@@ -273,6 +349,7 @@ window.addEventListener('message',event=>{
   if(msg.type==='BRIDGE_READY'){
     bridgeReady=true;bridgeVersion=msg.version||'';sessionStorage.removeItem('livefinder-stale-reload');console.log(`[LiveFinder] extension connected${bridgeVersion?` v${bridgeVersion}`:''}`);
     window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
+    window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_POOL'},'*');
     return;
   }
 
@@ -290,10 +367,18 @@ window.addEventListener('message',event=>{
   if(msg.type==='NERO_STATUS')reconcileStatus(msg.queue,msg.result);
   if(msg.type==='NERO_POOL'){
     const pool=msg.pool||{};
-    discoveredPool=Array.isArray(pool.items)?pool.items:[];
+    const nextPool=Array.isArray(pool.items)?pool.items:[];
+    const nextSignature=poolSignature(nextPool);
+    discoveredPool=nextPool;
     poolScrapedAt=Number(pool.scrapedAt||0);
-    renderPool();
-    if(scanStartedAt&&poolScrapedAt>=scanStartedAt)$('poolStatus').textContent=`Scan complete · ${discoveredPool.length} found`;
+    if(nextSignature!==discoveredPoolSignature){
+      discoveredPoolSignature=nextSignature;
+      renderPool();
+    }else{
+      const available=filterAvailablePool(discoveredPool,state.submissions);
+      updatePoolStatus(available.length);
+    }
+    if(scanStartedAt&&poolScrapedAt>=scanStartedAt)$('poolStatus').textContent=`Scan complete · ${filterAvailablePool(discoveredPool,state.submissions).length} available`;
   }
   if(msg.type==='QUEUE_WATCH_STATE')applyWatchState(msg.response);
   if(msg.type==='QUEUE_ALERTS_UPDATED'){
@@ -314,8 +399,8 @@ let pollTick=0;
 setInterval(()=>{
   if(!bridgeReady)return;
   window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_STATUS'},'*');
-  window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_POOL'},'*');
   pollTick+=1;
+  if(pollTick%2===0)window.postMessage({source:'livefinder-web',type:'REQUEST_NERO_POOL'},'*');
   if(pollTick%3===0)window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
 },1500);
 window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');
