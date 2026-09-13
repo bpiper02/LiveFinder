@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LiveFinder Nero Autofill",
-  "version": "0.6.9",
+  "version": "0.7.1",
   "minimum_chrome_version": "114",
   "description": "Discover reviewers, assist music submission autofill, automate Nero free submissions, and alert artists as queues move.",
   "permissions": [
@@ -30,6 +30,12 @@
       "matches": ["http://localhost/*", "http://127.0.0.1/*"],
       "js": ["bridge.js"],
       "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
+      "js": ["reviewer-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": ["https://www.nero.fan/*", "https://nero.fan/*"],
