@@ -26,17 +26,10 @@
       .filter(visible)
       .forEach(push);
 
-    // Nero can render submission steps in plain div/section containers rather
-    // than semantic form/dialog elements. Add compact visible containers that
-    // actually contain editable controls as candidates before falling back to
-    // the whole document.
     [...document.querySelectorAll('section, main, [class*="modal" i], [class*="dialog" i], [class*="form" i]')]
       .filter(visible)
       .filter(el => el.querySelector('input:not([type="hidden"]), textarea, select, [contenteditable="true"]'))
-      .filter(el => {
-        const text = String(el.innerText || el.textContent || '');
-        return text.length <= 5000;
-      })
+      .filter(el => String(el.innerText || el.textContent || '').length <= 5000)
       .forEach(push);
 
     push(document);
@@ -58,14 +51,18 @@
 
   function activeRootInfo() {
     const inspected = candidateRoots().map(inspectRoot);
-    inspected.sort((a, b) => {
-      if (b.matchedFields.length !== a.matchedFields.length) return b.matchedFields.length - a.matchedFields.length;
-      const aSemantic = a.root === document ? 0 : 1;
-      const bSemantic = b.root === document ? 0 : 1;
-      if (bSemantic !== aSemantic) return bSemantic - aSemantic;
-      return a.area - b.area;
-    });
-    return inspected[0] || inspectRoot(document);
+    const semantic = inspected
+      .filter(info => info.root !== document && info.matchedFields.length > 0)
+      .sort((a, b) => {
+        if (b.matchedFields.length !== a.matchedFields.length) return b.matchedFields.length - a.matchedFields.length;
+        return a.area - b.area;
+      });
+
+    // A visible form/dialog/container wins over the page-wide fallback. This
+    // keeps one-step autofill from accidentally preferring unrelated fields
+    // elsewhere on the reviewer page when the actual submission step is open.
+    if (semantic[0]) return semantic[0];
+    return inspected.find(info => info.root === document) || inspectRoot(document);
   }
 
   function pageContext() {
