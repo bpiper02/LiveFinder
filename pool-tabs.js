@@ -4,12 +4,14 @@
   const otherCards=document.getElementById('poolOther');
   const viewsRoot=document.getElementById('poolViews');
   const tablist=document.getElementById('poolTabs');
+  const poolStatus=document.getElementById('poolStatus');
   const library=document.getElementById('reviewersSetup');
   if(library)library.open=false;
   if(!liveCards||!openCards||!otherCards||!viewsRoot||!tablist)return;
 
   const PREVIEW_COUNT=8;
   const SONG_KEY='livefinder-pool-song-id';
+  const DASHBOARD_KEY='nero-router-state-v1';
   const cards={live:liveCards,open:openCards,other:otherCards};
   const views={
     live:document.getElementById('poolViewLive'),
@@ -19,10 +21,28 @@
   const buttons=[...document.querySelectorAll('[data-pool-filter]')];
   let active='live';
   let expanded=false;
+  let latestPool=[];
+  let lastScrapedAt=0;
 
   const formatCount=value=>{
     const number=Math.max(0,Math.floor(Number(value)||0));
     return number<100?String(number).padStart(2,'0'):String(number);
+  };
+
+  const formatAge=timestamp=>{
+    const age=Math.max(0,Date.now()-Number(timestamp||0));
+    const seconds=Math.floor(age/1000);
+    if(seconds<10)return 'just now';
+    if(seconds<60)return `${seconds}s ago`;
+    const minutes=Math.floor(seconds/60);
+    if(minutes<60)return `${minutes}m ago`;
+    const hours=Math.floor(minutes/60);
+    const remainMinutes=minutes%60;
+    if(hours<24)return `${hours}h${remainMinutes?` ${remainMinutes}m`:''} ago`;
+    const days=Math.floor(hours/24);
+    const remainHours=hours%24;
+    if(days<7)return `${days}d${remainHours?` ${remainHours}h`:''} ago`;
+    return new Date(timestamp).toLocaleDateString(undefined,{month:'short',day:'numeric'});
   };
 
   const actionBar=document.createElement('div');
@@ -48,6 +68,22 @@
     const open=countCards(cards.open);
     const other=countCards(cards.other);
     return {live,open,other,all:live+open+other};
+  }
+
+  function availableCount(){
+    try{
+      const state=JSON.parse(localStorage.getItem(DASHBOARD_KEY)||'{}');
+      const submissions=Array.isArray(state.submissions)?state.submissions:[];
+      const filter=globalThis.LiveFinderDashboard?.filterAvailablePool;
+      return filter?filter(latestPool,submissions).length:latestPool.length;
+    }catch{return latestPool.length;}
+  }
+
+  function refreshPoolStatus(){
+    if(!poolStatus||!lastScrapedAt)return;
+    const available=availableCount();
+    const hidden=Math.max(0,latestPool.length-available);
+    poolStatus.textContent=`${available} available${hidden?` · ${hidden} submitted`:''} · last scan ${formatAge(lastScrapedAt)}`;
   }
 
   function chooseUsableFilter(next,c){
@@ -153,6 +189,8 @@
       select.setAttribute('aria-hidden','true');
       const card=select.closest('.poolCard');
       if(!card)continue;
+      const chip=card.querySelector('.statusChip');
+      if(chip&&chip.textContent.trim().toLowerCase()==='live')chip.hidden=true;
       let button=card.querySelector('[data-pool-submit-button]');
       if(!button){
         button=document.createElement('button');
@@ -214,7 +252,17 @@
     });
   }
 
+  window.addEventListener('message',event=>{
+    if(event.source!==window)return;
+    const message=event.data;
+    if(message?.source!=='livefinder-extension'||message.type!=='NERO_POOL')return;
+    latestPool=Array.isArray(message.pool?.items)?message.pool.items:[];
+    lastScrapedAt=Number(message.pool?.scrapedAt||0);
+    setTimeout(refreshPoolStatus,0);
+  });
+
   const observer=new MutationObserver(sync);
   for(const el of Object.values(cards))observer.observe(el,{childList:true,subtree:true});
+  setInterval(refreshPoolStatus,30000);
   sync();
 })();
