@@ -94,8 +94,6 @@
         recoverFromStaleContext();
         return;
       }
-      // A MV3 service worker can be cold immediately after an extension reload.
-      // Treat that as a reconnect state, not an extension error, and retry quietly.
       window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_CONNECTING' }, '*');
       if (readyAttempt < 6) scheduleReadyRetry();
       else console.info('[LiveFinder] bridge still waiting for extension background:', String(err?.message || err));
@@ -126,6 +124,16 @@
         songs: Array.isArray(message.songs) ? message.songs : [],
         syncedAt: Number(message.syncedAt || Date.now())
       }, 'SONG_LIBRARY_SYNCED');
+      return;
+    }
+
+    if (message.type === 'REQUEST_PAYMENT_POLICY') {
+      await relay(message, { type: 'GET_PAYMENT_POLICY' }, 'PAYMENT_POLICY_STATE');
+      return;
+    }
+
+    if (message.type === 'SET_PAYMENT_POLICY') {
+      await relay(message, { type: 'SET_PAYMENT_POLICY', policy: message.policy }, 'PAYMENT_POLICY_UPDATED');
       return;
     }
 
