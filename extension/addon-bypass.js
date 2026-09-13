@@ -1,12 +1,7 @@
 (() => {
   const { parseReviewerUrl } = globalThis.LiveFinderUrl || {};
-  if (!parseReviewerUrl) return;
-
-  const norm = value => String(value || '')
-    .replace(/[’‘]/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+  const guard = globalThis.LiveFinderPaymentGuard;
+  if (!parseReviewerUrl || !guard) return;
 
   const visible = el => {
     if (!el) return false;
@@ -35,64 +30,65 @@
     return !!current?.handle && !!target?.handle && current.handle.toLowerCase() === target.handle.toLowerCase();
   }
 
-  function addOnRoot() {
+  function monetizedRoot() {
     const candidates = [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog, section, div')]
       .filter(visible)
-      .filter(el => {
-        const text = norm(el.innerText || el.textContent || '');
-        if (!text || text.length > 4500) return false;
-        return text.includes('add-ons') && (text.includes('enhance your submission') || text.includes("i'm good") || text.includes('im good'));
+      .map(el => {
+        const text = String(el.innerText || el.textContent || '');
+        if (!text || text.length > 5000) return null;
+        const surface = guard.classifySurfaceText(text);
+        if (!surface.monetized) return null;
+        const rect = el.getBoundingClientRect();
+        return { el, text, surface, area: rect.width * rect.height };
       })
-      .sort((a, b) => {
-        const ar = a.getBoundingClientRect();
-        const br = b.getBoundingClientRect();
-        return (ar.width * ar.height) - (br.width * br.height);
-      });
+      .filter(Boolean)
+      .sort((a, b) => a.area - b.area);
     return candidates[0] || null;
   }
 
-  function freeExitButton(root) {
-    return [...root.querySelectorAll('button, [role="button"]')]
+  function verifiedFreeExit(rootInfo) {
+    if (!rootInfo || rootInfo.surface.kind !== 'optional-upsell') return null;
+    return [...rootInfo.el.querySelectorAll('button, [role="button"], a')]
       .filter(visible)
       .find(el => {
-        const text = norm(el.innerText || el.textContent || el.getAttribute?.('aria-label'));
-        return text === "i'm good" || text === 'im good';
+        const label = el.innerText || el.textContent || el.getAttribute?.('aria-label') || '';
+        return guard.actionDecision(label, rootInfo.text).decision === 'safe-free';
       }) || null;
   }
 
-  let armed = false;
-  let clicked = false;
-
-  async function arm() {
+  async function pendingForThisReviewer() {
     try {
       const response = await runtimeSend({ type: 'GET_NERO_SUBMISSION' });
       const payload = response?.record?.payload;
-      armed = !!payload && payload.source === 'livefinder' && sameReviewer(payload?.reviewer?.neroUrl);
+      return !!payload && payload.source === 'livefinder' && sameReviewer(payload?.reviewer?.neroUrl);
     } catch {
-      armed = false;
+      return false;
     }
-    return armed;
   }
+
+  let clicked = false;
 
   async function tick() {
     if (clicked) return;
-    const root = addOnRoot();
-    if (!root) return;
-    if (!(await arm())) return;
-    const button = freeExitButton(root);
+    const rootInfo = monetizedRoot();
+    if (!rootInfo || rootInfo.surface.kind !== 'optional-upsell') return;
+    const button = verifiedFreeExit(rootInfo);
     if (!button) return;
 
+    // Revalidate the pending run immediately before every click. This prevents a
+    // stale SPA tab from dismissing an upsell during a later manual Nero session.
+    if (!(await pendingForThisReviewer())) return;
+
+    const label = guard.norm(button.innerText || button.textContent || button.getAttribute?.('aria-label'));
     clicked = true;
     button.scrollIntoView?.({ block: 'center', inline: 'center' });
     button.click();
-    console.log("[LiveFinder] add-ons: chose free 'I'm good' path");
+    console.log(`[LiveFinder] monetization guard: chose verified free upsell exit "${label}"`);
     setTimeout(() => { clicked = false; }, 1800);
   }
 
-  arm().then(() => {
-    tick();
-    const observer = new MutationObserver(tick);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-    setInterval(tick, 500);
-  });
+  tick();
+  const observer = new MutationObserver(tick);
+  observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  setInterval(tick, 500);
 })();
