@@ -2,6 +2,10 @@
   const WEB_SOURCE = 'livefinder-web';
   const EXT_SOURCE = 'livefinder-extension';
   const RELOAD_GUARD_KEY = 'livefinder-stale-reload-at';
+  const DEFAULT_TIMEOUT_MS = 6000;
+  let ready = false;
+  let readyAttempt = 0;
+  let readyTimer = null;
 
   function isStaleContextError(err) {
     const text = String(err?.message || err || '').toLowerCase();
@@ -24,7 +28,7 @@
     }, '*');
   }
 
-  function sendRuntime(message, timeoutMs = 2500) {
+  function sendRuntime(message, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       if (!globalThis.chrome?.runtime?.sendMessage) {
         reject(new Error('Extension runtime unavailable. Reload the LiveFinder extension, then refresh this tab.'));
@@ -60,19 +64,41 @@
     });
   }
 
+  function scheduleReadyRetry() {
+    if (ready || readyTimer || readyAttempt >= 6) return;
+    const delays = [250, 500, 900, 1400, 2200, 3200];
+    const delay = delays[Math.min(readyAttempt, delays.length - 1)];
+    readyTimer = setTimeout(() => {
+      readyTimer = null;
+      announceReady();
+    }, delay);
+  }
+
   async function announceReady() {
+    if (ready) return;
+    readyAttempt += 1;
     try {
-      const response = await sendRuntime({ type: 'PING' });
+      const response = await sendRuntime({ type: 'PING' }, DEFAULT_TIMEOUT_MS);
       if (response?.ok) {
+        ready = true;
+        readyAttempt = 0;
+        if (readyTimer) clearTimeout(readyTimer);
+        readyTimer = null;
         sessionStorage.removeItem(RELOAD_GUARD_KEY);
         window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_READY', version: response.version }, '*');
+        return;
       }
+      scheduleReadyRetry();
     } catch (err) {
       if (isStaleContextError(err)) {
         recoverFromStaleContext();
         return;
       }
-      console.warn('[LiveFinder] bridge not ready', err);
+      // A MV3 service worker can be cold immediately after an extension reload.
+      // Treat that as a reconnect state, not an extension error, and retry quietly.
+      window.postMessage({ source: EXT_SOURCE, type: 'BRIDGE_CONNECTING' }, '*');
+      if (readyAttempt < 6) scheduleReadyRetry();
+      else console.info('[LiveFinder] bridge still waiting for extension background:', String(err?.message || err));
     }
   }
 
@@ -123,7 +149,7 @@
           recoverFromStaleContext();
           return;
         }
-        console.warn('[LiveFinder] Could not store pending Nero submission', err);
+        console.info('[LiveFinder] Could not store pending Nero submission:', String(err?.message || err));
         window.postMessage({ source: EXT_SOURCE, type: 'NERO_SUBMISSION_STORE_FAILED', error: String(err?.message || err) }, '*');
       }
       return;
@@ -177,7 +203,11 @@
       return;
     }
 
-    if (message.type === 'PING_BRIDGE') announceReady();
+    if (message.type === 'PING_BRIDGE') {
+      ready = false;
+      readyAttempt = 0;
+      announceReady();
+    }
   });
 
   announceReady();
