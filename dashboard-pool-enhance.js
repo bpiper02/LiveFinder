@@ -2,9 +2,17 @@
   const STORAGE_KEY = 'nero-router-state-v1';
   const EXT_SOURCE = 'livefinder-extension';
   const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const POOL_COLUMNS = ['poolLive', 'poolOpen', 'poolOther'];
+  const EMPTY_COPY = {
+    poolLive: 'No live reviewers detected.',
+    poolOpen: 'No open/upcoming reviewers detected.',
+    poolOther: 'Nothing else detected.'
+  };
+
   let poolItems = [];
   let scheduled = false;
-  let poolRefreshPending = false;
+  let poolRenderPending = false;
+  let poolInteractionLockedUntil = 0;
 
   function readState() {
     try {
@@ -25,11 +33,6 @@
     }
   }
 
-  function poolItemForReviewer(url) {
-    const key = reviewerKey(url);
-    return poolItems.find(item => String(item?.handle || '').toLowerCase() === key) || null;
-  }
-
   function currentSubmissionFor(url) {
     const key = reviewerKey(url);
     if (!key) return null;
@@ -39,6 +42,11 @@
       .filter(item => Number(item?.createdAtMs || 0) >= cutoff)
       .filter(item => ['automation started', 'queued', 'submitted'].includes(String(item?.status || '').toLowerCase()))
       .sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0))[0] || null;
+  }
+
+  function poolItemForReviewer(url) {
+    const key = reviewerKey(url);
+    return poolItems.find(item => String(item?.handle || '').replace(/^@/, '').toLowerCase() === key) || null;
   }
 
   function streamLabel(item) {
@@ -79,60 +87,37 @@
     return smalls.map(el => el.textContent.trim()).find(text => /^https?:\/\/(?:www\.)?nero\.fan\//i.test(text)) || '';
   }
 
-  function existingSubmittedCard(column, key) {
-    return [...column.querySelectorAll('.poolCard')].find(card => card.dataset.livefinderReviewerKey === key) || null;
+  function ensureEmptyState(column, id) {
+    const hasCards = !!column.querySelector('.poolCard');
+    const empty = column.querySelector(':scope > .empty');
+    if (hasCards) {
+      empty?.remove();
+      return;
+    }
+    if (!empty) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = EMPTY_COPY[id] || 'No reviewers detected.';
+      column.appendChild(p);
+    }
   }
 
   function decoratePool() {
-    const submittedColumn = document.getElementById('poolSubmitted');
-    if (!submittedColumn) return;
-
-    if (poolRefreshPending) {
-      submittedColumn.querySelectorAll('.poolCard').forEach(card => card.remove());
-      poolRefreshPending = false;
-    }
-
-    for (const id of ['poolLive', 'poolOpen', 'poolOther']) {
+    for (const id of POOL_COLUMNS) {
       const column = document.getElementById(id);
       if (!column) continue;
 
       for (const card of [...column.querySelectorAll('.poolCard')]) {
         const url = neroUrlFromPoolCard(card);
-        const key = reviewerKey(url);
-        const item = poolItemForReviewer(url);
-        addStreamLink(card, item);
-
-        const oldSubmitted = key ? existingSubmittedCard(submittedColumn, key) : null;
-        const submission = currentSubmissionFor(url);
-        if (!submission) {
-          oldSubmitted?.remove();
+        if (currentSubmissionFor(url)) {
+          card.remove();
           continue;
         }
-
-        if (oldSubmitted && oldSubmitted !== card) oldSubmitted.remove();
-        const select = card.querySelector('select[data-pool-url]');
-        if (select && !select.disabled) {
-          select.disabled = true;
-          select.title = 'Already submitted to this reviewer recently.';
-        }
-        const chip = card.querySelector('.statusChip');
-        const status = submission.status === 'submitted' ? 'submitted' : submission.status;
-        if (chip && chip.textContent !== status) chip.textContent = status;
-        card.dataset.livefinderSubmitted = '1';
-        card.dataset.livefinderReviewerKey = key;
-        submittedColumn.appendChild(card);
+        addStreamLink(card, poolItemForReviewer(url));
       }
-    }
 
-    const hasCards = !!submittedColumn.querySelector('.poolCard');
-    const empty = submittedColumn.querySelector(':scope > .empty');
-    if (!hasCards && !empty) {
-      const p = document.createElement('p');
-      p.className = 'empty';
-      p.textContent = 'No recent submissions in this pool.';
-      submittedColumn.appendChild(p);
+      ensureEmptyState(column, id);
     }
-    if (hasCards && empty) empty.remove();
   }
 
   function decorateHistory() {
@@ -159,13 +144,63 @@
     requestAnimationFrame(run);
   }
 
+  function poolInteractionLocked() {
+    return Date.now() < poolInteractionLockedUntil;
+  }
+
+  function flushPendingPoolRender() {
+    if (poolInteractionLocked() || !poolRenderPending) return;
+    poolRenderPending = false;
+    if (typeof window.renderPool === 'function') window.renderPool();
+  }
+
+  const originalRenderPool = window.renderPool;
+  if (typeof originalRenderPool === 'function') {
+    window.renderPool = function liveFinderStableRenderPool(...args) {
+      if (poolInteractionLocked()) {
+        poolRenderPending = true;
+        return;
+      }
+      originalRenderPool.apply(this, args);
+      decoratePool();
+    };
+  }
+
+  function poolSelectFromEvent(event) {
+    const target = event.target;
+    return target instanceof Element ? target.closest('select[data-pool-url]') : null;
+  }
+
+  document.addEventListener('pointerdown', event => {
+    if (!poolSelectFromEvent(event)) return;
+    poolInteractionLockedUntil = Date.now() + 30000;
+  }, true);
+
+  document.addEventListener('focusin', event => {
+    if (!poolSelectFromEvent(event)) return;
+    poolInteractionLockedUntil = Date.now() + 30000;
+  }, true);
+
+  document.addEventListener('change', event => {
+    if (!poolSelectFromEvent(event)) return;
+    poolInteractionLockedUntil = 0;
+    setTimeout(flushPendingPoolRender, 0);
+  }, true);
+
+  document.addEventListener('focusout', event => {
+    if (!poolSelectFromEvent(event)) return;
+    setTimeout(() => {
+      poolInteractionLockedUntil = 0;
+      flushPendingPoolRender();
+    }, 120);
+  }, true);
+
   window.addEventListener('message', event => {
     if (event.source !== window) return;
     const message = event.data;
     if (!message || message.source !== EXT_SOURCE) return;
     if (message.type === 'NERO_POOL') {
       poolItems = Array.isArray(message.pool?.items) ? message.pool.items : [];
-      poolRefreshPending = true;
       schedule();
     }
     if (message.type === 'NERO_STATUS' || message.type === 'DASHBOARD_RUNS') schedule();
