@@ -90,13 +90,6 @@ function syncPoolMetadataToState(){
 }
 
 function migrateState(){
-  state.reviewers=state.reviewers.map(r=>({
-    ...r,
-    id:r.id||uid(),
-    neroUrl:r.neroUrl,
-    label:bestReviewerLabel({url:r.neroUrl,savedLabel:r.label||r.name||''})
-  })).filter(r=>r.neroUrl);
-
   state.submissions=state.submissions.map(s=>({
     ...s,
     id:s.id||uid(),
@@ -109,7 +102,35 @@ function migrateState(){
     createdAt:s.createdAt||new Date().toLocaleString(),
     createdAtMs:s.createdAtMs||Date.now()
   }));
+
+  state.reviewers=state.reviewers.map(r=>{
+    const key=reviewerKey(r.neroUrl||'');
+    const appearsInHistory=key&&state.submissions.some(s=>reviewerKey(s.reviewerUrl)===key);
+    return {
+      ...r,
+      id:r.id||uid(),
+      neroUrl:r.neroUrl,
+      label:bestReviewerLabel({url:r.neroUrl,savedLabel:r.label||r.name||''}),
+      explicitSaved:typeof r.explicitSaved==='boolean'?r.explicitSaved:!appearsInHistory
+    };
+  }).filter(r=>r.neroUrl);
   save();
+}
+
+function explicitReviewers(){
+  return state.reviewers.filter(r=>r.explicitSaved===true);
+}
+
+function pastReviewerRecords(){
+  const seen=new Set();
+  return [...state.submissions]
+    .sort((a,b)=>(b.createdAtMs||0)-(a.createdAtMs||0))
+    .filter(s=>{
+      const key=reviewerKey(s.reviewerUrl||'');
+      if(!key||seen.has(key))return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function watchForSubmission(s){
@@ -189,13 +210,38 @@ function renderSongs(){
     <div class="card itemRow"><div class="itemMain"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div><button class="iconButton danger" type="button" data-action="delete-song" data-id="${esc(s.id)}">Delete</button></div>`).join(''):'<p class="empty">No songs saved yet.</p>';
 }
 
+function reviewerLink(url,stored,label){
+  const destination=destinationFor(url,stored);
+  if(!destination.href)return `<strong>${esc(label)}</strong>`;
+  return `<a class="historyReviewer" href="${esc(destination.href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(destination.label)}</small></a>`;
+}
+
+function renderReviewerLibraryStatus(){
+  const el=$('reviewerLibraryStatus');
+  if(!el)return;
+  el.textContent=`${explicitReviewers().length} saved · ${pastReviewerRecords().length} past`;
+}
+
 function renderReviewers(){
-  $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>{
-    const destination=destinationFor(r.neroUrl,r);
+  const reviewers=explicitReviewers();
+  $('reviewers').innerHTML=reviewers.length?reviewers.map(r=>{
     const label=canonicalReviewerLabel(r.neroUrl,r.label);
-    const reviewerLink=destination.href?`<a class="historyReviewer" href="${esc(destination.href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(destination.label)}</small></a>`:`<strong>${esc(label)}</strong>`;
-    return `<div class="card reviewer"><div>${reviewerLink}</div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${esc(r.id)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${esc(r.id)}">Delete</button></div></div>`;
-  }).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
+    return `<div class="card reviewer"><div>${reviewerLink(r.neroUrl,r,label)}</div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${esc(r.id)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${esc(r.id)}">Remove</button></div></div>`;
+  }).join(''):'<p class="empty">No reviewers saved. Saving one is optional.</p>';
+  renderReviewerLibraryStatus();
+}
+
+function renderPastReviewers(){
+  const past=pastReviewerRecords();
+  const explicitKeys=new Set(explicitReviewers().map(r=>reviewerKey(r.neroUrl)));
+  $('pastReviewers').innerHTML=past.length?past.map(s=>{
+    const label=canonicalReviewerLabel(s.reviewerUrl,s.reviewer);
+    const key=reviewerKey(s.reviewerUrl);
+    const saveButton=explicitKeys.has(key)?'<span class="savedFlag">SAVED</span>':`<button class="iconButton" type="button" data-save-reviewer-url="${esc(s.reviewerUrl)}" data-save-reviewer-label="${esc(label)}">Save</button>`;
+    const songSelect=state.songs.length?`<select data-past-url="${esc(s.reviewerUrl)}" data-past-label="${esc(label)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(song=>`<option value="${esc(song.id)}">${esc(song.artist)} — ${esc(song.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>';
+    return `<div class="card reviewer pastReviewer"><div>${reviewerLink(s.reviewerUrl,s,label)}<small class="lastSubmitted">Last submitted ${esc(s.createdAt||'')}</small></div><div class="reviewerActions">${songSelect}${saveButton}</div></div>`;
+  }).join(''):'<p class="empty">Past reviewers will appear here after you submit.</p>';
+  renderReviewerLibraryStatus();
 }
 
 function renderHistory(){
@@ -212,6 +258,7 @@ function renderHistory(){
 function render(){
   renderSongs();
   renderReviewers();
+  renderPastReviewers();
   renderHistory();
   renderPool(true);
   renderQueueControls();
@@ -224,6 +271,29 @@ function handleAction(action,id){
   save();render();
 }
 
+function saveReviewerExplicit(url,label='',stored={}){
+  let normalized;
+  try{normalized=normalizeNeroUrl(url);}catch{return false;}
+  const key=reviewerKey(normalized);
+  let reviewer=state.reviewers.find(r=>reviewerKey(r.neroUrl)===key);
+  if(!reviewer){
+    reviewer={id:uid(),neroUrl:normalized,label:label||reviewerLabel(normalized),explicitSaved:true,savedAtMs:Date.now()};
+    Object.assign(reviewer,stored);
+    const item=poolItemForReviewer(normalized);
+    if(item)copyPoolMetadata(reviewer,item);
+    state.reviewers.push(reviewer);
+  }else{
+    reviewer.explicitSaved=true;
+    reviewer.savedAtMs=Date.now();
+    reviewer.label=bestReviewerLabel({url:normalized,poolDisplayName:poolItemForReviewer(normalized)?.displayName,savedLabel:reviewer.label,fallback:label});
+    for(const keyName of ['streamUrl','streamPlatform','streamConfidence','streamDerived']){
+      if(stored[keyName]!=null&&!reviewer[keyName])reviewer[keyName]=stored[keyName];
+    }
+  }
+  save();renderReviewers();renderPastReviewers();
+  return true;
+}
+
 $('songForm').onsubmit=e=>{
   e.preventDefault();
   state.songs.push({id:uid(),artist:$('artist').value.trim(),title:$('title').value.trim(),email:$('email').value.trim(),instagram:$('instagram').value.trim(),songUrl:$('songUrl').value.trim(),note:$('note').value.trim()});
@@ -233,22 +303,23 @@ $('songForm').onsubmit=e=>{
   $('songForm').reset();
   $('email').value=keepEmail;
   $('instagram').value=keepInstagram;
-  renderSongs();renderReviewers();renderPool(true);
+  renderSongs();renderReviewers();renderPastReviewers();renderPool(true);
 };
 
 $('reviewerForm').onsubmit=e=>{
   e.preventDefault();
   let url;
   try{url=normalizeNeroUrl($('neroUrl').value);}catch{alert('Enter a valid nero.fan reviewer URL.');return;}
-  if(state.reviewers.some(r=>reviewerKey(r.neroUrl)===reviewerKey(url))){alert('That Nero reviewer is already in your list.');return;}
-  state.reviewers.push({id:uid(),neroUrl:url,label:reviewerLabel(url)});
-  save();$('reviewerForm').reset();renderReviewers();
+  const existing=state.reviewers.find(r=>reviewerKey(r.neroUrl)===reviewerKey(url)&&r.explicitSaved===true);
+  if(existing){alert('That reviewer is already saved.');return;}
+  saveReviewerExplicit(url,reviewerLabel(url));
+  $('reviewerForm').reset();
 };
 
 $('clearHistory').onclick=()=>{
   if(!state.submissions.length)return;
   if(!confirm('Clear all submission history?'))return;
-  state.submissions=[];save();renderHistory();renderPool(true);
+  state.submissions=[];save();renderHistory();renderPastReviewers();renderPool(true);
 };
 
 $('refreshPool').onclick=()=>{
@@ -274,29 +345,39 @@ $('scanQueuesNow').onclick=()=>{
   window.postMessage({source:'livefinder-web',type:'SCAN_OPEN_NERO_TABS'},'*');
 };
 
-function submitPoolReviewer(url,label,songId){
+function reviewerForUrl(url,label=''){
   let normalized;
-  try{normalized=normalizeNeroUrl(url);}catch{return;}
+  try{normalized=normalizeNeroUrl(url);}catch{return null;}
+  const key=reviewerKey(normalized);
+  const saved=state.reviewers.find(r=>reviewerKey(r.neroUrl)===key);
   const item=poolItemForReviewer(normalized);
-  let reviewer=state.reviewers.find(r=>reviewerKey(r.neroUrl)===reviewerKey(normalized));
-  if(!reviewer){
-    reviewer={id:uid(),neroUrl:normalized,label:label||reviewerLabel(normalized)};
-    if(item)copyPoolMetadata(reviewer,item);
-    state.reviewers.push(reviewer);
-    save();
-    renderReviewers();
-  }else{
-    let changed=false;
-    const nextLabel=bestReviewerLabel({url:normalized,poolDisplayName:item?.displayName,savedLabel:reviewer.label,fallback:label});
-    if(nextLabel&&reviewer.label!==nextLabel){reviewer.label=nextLabel;changed=true;}
-    if(item&&copyPoolMetadata(reviewer,item))changed=true;
-    if(changed){save();renderReviewers();}
+  const reviewer={
+    id:saved?.id||uid(),
+    neroUrl:normalized,
+    label:bestReviewerLabel({url:normalized,poolDisplayName:item?.displayName,savedLabel:saved?.label,fallback:label})
+  };
+  for(const source of [saved,item]){
+    if(!source)continue;
+    for(const field of ['streamUrl','streamPlatform','streamConfidence','streamDerived']){
+      if(source[field]!=null&&reviewer[field]==null)reviewer[field]=source[field];
+    }
   }
-  submitToReviewer(reviewer.id,songId);
+  return reviewer;
+}
+
+function submitPoolReviewer(url,label,songId){
+  const reviewer=reviewerForUrl(url,label);
+  if(!reviewer)return;
+  startSubmission(reviewer,songId);
 }
 
 function submitToReviewer(reviewerId,songId){
-  const reviewer=state.reviewers.find(r=>r.id===reviewerId);
+  const reviewer=state.reviewers.find(r=>r.id===reviewerId&&r.explicitSaved===true);
+  if(!reviewer)return;
+  startSubmission(reviewer,songId);
+}
+
+function startSubmission(reviewer,songId){
   const song=state.songs.find(s=>s.id===songId);
   if(!reviewer||!song)return;
   if(!bridgeReady){alert('LiveFinder extension is not connected yet. Refresh this page after reloading the extension, then try again.');window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');return;}
@@ -318,6 +399,7 @@ function submitToReviewer(reviewerId,songId){
       state.submissions.unshift(submission);
       save();
       renderHistory();
+      renderPastReviewers();
       renderPool(true);
       window.open(base,'_blank','noopener,noreferrer');
       return;
@@ -388,14 +470,28 @@ document.addEventListener('change',event=>{
     setTimeout(flushPendingPoolRender,0);
     return;
   }
+  const pastSelect=event.target instanceof Element?event.target.closest('select[data-past-url]'):null;
+  if(pastSelect){
+    submitPoolReviewer(pastSelect.dataset.pastUrl,pastSelect.dataset.pastLabel,pastSelect.value);
+    return;
+  }
   const reviewerSelect=event.target instanceof Element?event.target.closest('select[data-reviewer]'):null;
   if(reviewerSelect)submitToReviewer(reviewerSelect.dataset.reviewer,reviewerSelect.value);
 });
 
 document.addEventListener('click',event=>{
+  const saveBtn=event.target instanceof Element?event.target.closest('[data-save-reviewer-url]'):null;
+  if(saveBtn){
+    const history=state.submissions.find(s=>reviewerKey(s.reviewerUrl)===reviewerKey(saveBtn.dataset.saveReviewerUrl));
+    saveReviewerExplicit(saveBtn.dataset.saveReviewerUrl,saveBtn.dataset.saveReviewerLabel,history||{});
+    return;
+  }
   const btn=event.target instanceof Element?event.target.closest('[data-action]'):null;
   if(btn)handleAction(btn.dataset.action,btn.dataset.id);
 });
+
+const reviewerNav=document.querySelector('a[href="#reviewersSetup"]');
+if(reviewerNav)reviewerNav.addEventListener('click',()=>{const library=$('reviewersSetup');if(library)library.open=true;});
 
 window.addEventListener('message',event=>{
   if(event.source!==window)return;
@@ -428,7 +524,7 @@ window.addEventListener('message',event=>{
     discoveredPool=nextPool;
     poolScrapedAt=Number(pool.scrapedAt||0);
     const metadataChanged=syncPoolMetadataToState();
-    if(metadataChanged){renderReviewers();renderHistory();}
+    if(metadataChanged){renderReviewers();renderPastReviewers();renderHistory();}
     if(nextSignature!==discoveredPoolSignature){
       discoveredPoolSignature=nextSignature;
       renderPool();
@@ -449,7 +545,7 @@ window.addEventListener('message',event=>{
   if(msg.type==='QUEUE_SCAN_COMPLETE'){
     $('scanQueuesNow').textContent='Checked ✓';
     window.postMessage({source:'livefinder-web',type:'REQUEST_QUEUE_WATCH_STATE'},'*');
-    setTimeout(()=>$('scanQueuesNow').textContent='Check open Nero tabs',1600);
+    setTimeout(()=>$('scanQueuesNow').textContent='Check queues',1600);
   }
 });
 
