@@ -37,7 +37,7 @@
         const text = String(el.innerText || el.textContent || '');
         if (!text || text.length > 5000) return null;
         const surface = guard.classifySurfaceText(text);
-        if (!surface.monetized) return null;
+        if (surface.kind !== 'optional-upsell') return null;
         const rect = el.getBoundingClientRect();
         return { el, text, surface, area: rect.width * rect.height };
       })
@@ -71,7 +71,7 @@
   async function tick() {
     if (clicked) return;
     const rootInfo = monetizedRoot();
-    if (!rootInfo || rootInfo.surface.kind !== 'optional-upsell') return;
+    if (!rootInfo) return;
     const button = verifiedFreeExit(rootInfo);
     if (!button) return;
 
