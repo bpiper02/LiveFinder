@@ -72,9 +72,10 @@
     </section>
 
     <section class="actionDock" aria-label="Submission actions">
+      <label class="paymentPolicyRow" for="paymentPolicy"><span>Paid steps</span><select id="paymentPolicy"><option value="free-only">Stop at paid step</option><option value="show-paid">Show paid option, then pause</option></select></label>
       <button id="autofillCurrent" class="primaryButton" type="button">Autofill this step</button>
       <button id="runFullAuto" class="secondaryAction" type="button">Run full free submission</button>
-      <small>Never selects paid skips or add-ons.</small>
+      <small>LiveFinder never authorizes a charge.</small>
     </section>
   </main>
   <script src="sidepanel.js"></script>
