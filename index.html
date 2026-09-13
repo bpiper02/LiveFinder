@@ -14,24 +14,23 @@
 <header class="window appHeader">
   <div class="titleBar"><strong>▣ LIVEFINDER.EXE</strong><span class="windowControls" aria-hidden="true">LOCAL MODE</span></div>
   <div class="windowBody heroBody">
-    <div><p class="eyebrow">ARTIST REVIEW ROUTER // FREE PATH ONLY</p><h1 class="rainbowText">LIVEFINDER</h1><p class="lede">Save a track once. Find active reviewers. Submit without repeating the same admin work.</p></div>
-    <div class="systemPanel" aria-label="System status"><div><span>EXTENSION</span><strong id="connectionState">CONNECTING...</strong></div><div><span>MODE</span><strong>LOCAL-FIRST / $0</strong></div><div><span>SAFETY</span><strong>NO AUTO-PAY</strong></div></div>
+    <div><p class="eyebrow">ARTIST REVIEW ROUTER</p><h1 class="rainbowText">LIVEFINDER</h1><p class="lede">Save a track once. Find active reviewers. Submit without repeating the same admin work.</p></div>
   </div>
-  <div class="marquee" aria-hidden="true"><div>★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★ QUEUE ALERTS ACTIVE ★ NEVER AUTO-SELECTS PAID SKIPS ★ LIVE REVIEW ROUTER ★ FREE SUBMISSIONS FIRST ★</div></div>
+  <div class="marquee quoteRail" aria-hidden="true"><div id="musicQuote">Loading a musician quote…</div></div>
 </header>
 
 <nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a></nav>
-<section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">000</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">000</strong></div><div><span>WATCHED</span><strong id="statQueues">000</strong></div></section>
+<section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">00</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">00</strong></div><div><span>WATCHED</span><strong id="statQueues">00</strong></div></section>
 
 <section id="pool" class="window panel discovery">
   <div class="titleBar sectionBar"><strong>REVIEWER POOL</strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
   <div class="windowBody">
-    <div class="poolToolbar"><p>Choose a reviewer and a saved song. LiveFinder handles the free Nero path.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div>
+    <div class="poolToolbar"><p>Pick a saved song once, then choose the reviewers you want.</p><span id="poolStatus" class="poolStatus">No scan yet.</span></div>
     <div class="groove"></div>
     <div id="poolTabs" class="poolTabs" role="tablist" aria-label="Reviewer availability">
-      <button id="poolTabLive" class="poolTab isActive" type="button" role="tab" aria-selected="true" aria-controls="poolViewLive" data-pool-filter="live"><span>Live</span><strong data-pool-count="live">0</strong></button>
-      <button id="poolTabOpen" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViewOpen" data-pool-filter="open"><span>Open / Upcoming</span><strong data-pool-count="open">0</strong></button>
-      <button id="poolTabAll" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViews" data-pool-filter="all"><span>All</span><strong data-pool-count="all">0</strong></button>
+      <button id="poolTabLive" class="poolTab isActive" type="button" role="tab" aria-selected="true" aria-controls="poolViewLive" data-pool-filter="live"><span>Live</span><strong data-pool-count="live">00</strong></button>
+      <button id="poolTabOpen" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViewOpen" data-pool-filter="open"><span>Open / Upcoming</span><strong data-pool-count="open">00</strong></button>
+      <button id="poolTabAll" class="poolTab" type="button" role="tab" aria-selected="false" aria-controls="poolViews" data-pool-filter="all"><span>All</span><strong data-pool-count="all">00</strong></button>
     </div>
     <div id="poolViews" class="poolViews" data-active-filter="live">
       <section id="poolViewLive" class="poolView" role="tabpanel" aria-labelledby="poolTabLive" data-pool-view="live"><h3 class="poolGroupLabel"><span class="statusSquare liveSquare"></span>Live now</h3><div id="poolLive" class="cards compact poolCards"></div></section>
@@ -71,8 +70,11 @@
   </div>
 </details>
 
-<footer class="constructionFooter"><div>FREE NERO PATH ONLY // NEVER AUTO-SELECTS PAID SKIPS OR ADD-ONS</div></footer>
+<footer class="utilityFooter window">
+  <div class="footerMain"><strong>LIVEFINDER</strong><span>Save song details once · find active reviewers · use free submission paths · watch queues.</span></div>
+  <div class="footerMeta"><span>Extension: <strong id="connectionState">CONNECTING...</strong></span><details><summary>Automation notes</summary><p>Local-first. LiveFinder does not auto-select paid skips or add-ons.</p></details></div>
+</footer>
 </main>
-<script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script><script src="pool-tabs.js"></script>
+<script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script><script src="pool-tabs.js"></script>
 </body>
 </html>
