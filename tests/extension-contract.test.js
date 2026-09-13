@@ -99,7 +99,7 @@ assert.match(auxchord, /chooseAuthorship/);
 assert.doesNotMatch(auxchord, /PayPal|Apple Pay|Google Pay/);
 
 assert.match(tuneTavernDiscover, /browse-live/);
-assert.match(tuneTavernDiscover, /\/live\//);
+assert.match(tuneTavernDiscover, /livefinderTunetavernRoom/);
 assert.match(tuneTavernDiscover, /LF READY/);
 assert.match(tuneTavernDiscover, /MutationObserver/);
 
