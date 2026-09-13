@@ -4,12 +4,14 @@
 
   const SOURCE_IN = 'livefinder-discover-isolated';
   const SOURCE_OUT = 'livefinder-discover-main';
-  const MAX_VISITS = 700;
-  const MAX_DEPTH = 6;
+  const MAX_VISITS = 1000;
+  const MAX_DEPTH = 7;
   const MAX_FIBER_HOPS = 7;
   const HANDLE_KEY_RE = /(?:^|[._-])(username|user_name|handle|slug|creator_slug|creator_handle|profile_slug)$/i;
-  const URL_KEY_RE = /(href|url|link|path|pathname|route|permalink|share)/i;
+  const PLATFORM_KEY_RE = /(tiktok|youtube|twitch|kick|instagram)/i;
+  const URL_KEY_RE = /(href|url|link|path|pathname|route|permalink|share|stream|broadcast)/i;
   const HANDLE_VALUE_RE = /^@?[a-z0-9._-]{2,100}$/i;
+  const BARE_SOCIAL_RE = /^(?:www\.)?(?:tiktok\.com|youtube\.com|youtu\.be|twitch\.tv|kick\.com|instagram\.com)\//i;
 
   function post(type, payload) {
     window.postMessage({ source: SOURCE_OUT, type, ...payload }, '*');
@@ -40,8 +42,13 @@
     if (typeof value === 'string') {
       const raw = value.trim();
       if (!raw) return;
-      if (/^https?:\/\//i.test(raw) || raw.startsWith('/')) {
-        addCandidate(out, seenCandidates, raw, keyHint, URL_KEY_RE.test(keyHint) ? 100 : 55);
+      if (/^https?:\/\//i.test(raw) || raw.startsWith('/') || BARE_SOCIAL_RE.test(raw)) {
+        addCandidate(out, seenCandidates, raw, keyHint, URL_KEY_RE.test(keyHint) ? 110 : 65);
+      }
+      if (PLATFORM_KEY_RE.test(keyHint) && HANDLE_VALUE_RE.test(raw)) {
+        // Preserve the platform-bearing key as the hint. review-links.js uses it
+        // to safely turn explicit tiktok/youtube/twitch/kick usernames into URLs.
+        addCandidate(out, seenCandidates, raw, `${keyHint}:platform-handle`, 120);
       }
       if (HANDLE_KEY_RE.test(keyHint) && HANDLE_VALUE_RE.test(raw)) {
         const handle = raw.replace(/^@/, '');
@@ -110,7 +117,7 @@
 
     out.sort((a, b) => b.score - a.score);
     return {
-      candidates: out.slice(0, 80),
+      candidates: out.slice(0, 120),
       payloadCount: payloads.length,
       visits: state.visits
     };
