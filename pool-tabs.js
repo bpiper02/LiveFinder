@@ -7,6 +7,7 @@
   if(library)library.open=false;
   if(!liveCards||!openCards||!otherCards||!viewsRoot)return;
 
+  const PREVIEW_COUNT=8;
   const cards={live:liveCards,open:openCards,other:otherCards};
   const views={
     live:document.getElementById('poolViewLive'),
@@ -15,8 +16,18 @@
   };
   const buttons=[...document.querySelectorAll('[data-pool-filter]')];
   let active='live';
+  let expanded=false;
 
-  const countCards=el=>el?el.querySelectorAll('.poolCard').length:0;
+  const disclosure=document.createElement('div');
+  disclosure.className='poolDisclosure';
+  disclosure.hidden=true;
+  disclosure.innerHTML='<span id="poolDisclosureCopy"></span><button id="poolDisclosureToggle" type="button"></button>';
+  viewsRoot.insertAdjacentElement('afterend',disclosure);
+  const disclosureCopy=disclosure.querySelector('#poolDisclosureCopy');
+  const disclosureToggle=disclosure.querySelector('#poolDisclosureToggle');
+
+  const cardNodes=el=>el?[...el.querySelectorAll('.poolCard')]:[];
+  const countCards=el=>cardNodes(el).length;
 
   function counts(){
     const live=countCards(cards.live);
@@ -34,8 +45,31 @@
     return 'all';
   }
 
+  function clearPreviewHiding(){
+    for(const el of Object.values(cards)){
+      for(const card of cardNodes(el))card.classList.remove('poolPreviewHidden');
+    }
+  }
+
+  function applyDisclosure(c=counts()){
+    clearPreviewHiding();
+    const shouldOffer=active==='live'&&c.live>PREVIEW_COUNT;
+    disclosure.hidden=!shouldOffer;
+    if(!shouldOffer)return;
+
+    const live=cardNodes(cards.live);
+    if(!expanded)live.slice(PREVIEW_COUNT).forEach(card=>card.classList.add('poolPreviewHidden'));
+    disclosureCopy.textContent=expanded
+      ? `Showing all ${c.live} live reviewers.`
+      : `Showing ${PREVIEW_COUNT} of ${c.live} live reviewers.`;
+    disclosureToggle.textContent=expanded?'Show fewer':`Show all ${c.live}`;
+    disclosureToggle.setAttribute('aria-expanded',String(expanded));
+  }
+
   function applyFilter(next,c=counts()){
+    const previous=active;
     active=chooseUsableFilter(next,c);
+    if(active!==previous)expanded=false;
     viewsRoot.dataset.activeFilter=active;
 
     for(const button of buttons){
@@ -52,12 +86,14 @@
       views.live.hidden=false;
       views.open.hidden=true;
       views.other.hidden=true;
+      applyDisclosure(c);
       return;
     }
     if(active==='open'){
       views.live.hidden=true;
       views.open.hidden=false;
       views.other.hidden=true;
+      applyDisclosure(c);
       return;
     }
 
@@ -65,11 +101,13 @@
       views.live.hidden=false;
       views.open.hidden=true;
       views.other.hidden=true;
+      applyDisclosure(c);
       return;
     }
     views.live.hidden=c.live===0;
     views.open.hidden=c.open===0;
     views.other.hidden=c.other===0;
+    applyDisclosure(c);
   }
 
   function sync(){
@@ -80,6 +118,11 @@
     }
     applyFilter(active,c);
   }
+
+  disclosureToggle.addEventListener('click',()=>{
+    expanded=!expanded;
+    applyDisclosure(counts());
+  });
 
   for(const button of buttons){
     button.addEventListener('click',()=>applyFilter(button.dataset.poolFilter));
