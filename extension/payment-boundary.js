@@ -38,6 +38,7 @@
   }
 
   function roots() {
+    const priority = { 'optional-upsell': 5, 'queue-options': 5, 'payment-required': 4, 'monetized-unknown': 1 };
     return [...document.querySelectorAll('[role="dialog"], [aria-modal="true"], dialog, form, section, div')]
       .filter(visible)
       .map(el => {
@@ -49,7 +50,7 @@
         return { el, text, surface, area: rect.width * rect.height };
       })
       .filter(Boolean)
-      .sort((a, b) => a.area - b.area);
+      .sort((a, b) => (priority[b.surface.kind] || 0) - (priority[a.surface.kind] || 0) || a.area - b.area);
   }
 
   function freeExit(rootInfo) {
@@ -146,6 +147,11 @@
   // controller and are separately classified as paid actions.
   document.addEventListener('click', event => {
     if (event.isTrusted) return;
+    if (state.blocked) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
     const rootInfo = roots()[0];
     if (!rootInfo || rootInfo.surface.kind === 'queue-options') return;
     const target = event.target instanceof Element ? event.target.closest('button, [role="button"], a') : null;
