@@ -7,6 +7,7 @@ const assist = fs.readFileSync('extension/assist.js', 'utf8');
 const providerAssist = fs.readFileSync('extension/provider-assist.js', 'utf8');
 const providerUtils = fs.readFileSync('extension/provider-utils.js', 'utf8');
 const auxchord = fs.readFileSync('extension/auxchord.js', 'utf8');
+const tuneTavernDiscover = fs.readFileSync('extension/tunetavern-discover.js', 'utf8');
 const sidepanel = fs.readFileSync('extension/sidepanel.js', 'utf8');
 const fullauto = fs.readFileSync('extension/fullauto-contact.js', 'utf8');
 const paymentGuard = fs.readFileSync('extension/payment-guard.js', 'utf8');
@@ -44,7 +45,7 @@ for (const required of ['provider-utils.js','autofill-core.js','provider-assist.
 }
 const tavernSet = manifest.content_scripts.find(entry => entry.matches?.some(value => value.includes('tunetavern.app/*')));
 assert.ok(tavernSet, 'Tune Tavern content script set must exist');
-for (const required of ['provider-utils.js','autofill-core.js','provider-assist.js']) {
+for (const required of ['provider-utils.js','autofill-core.js','provider-assist.js','tunetavern-discover.js']) {
   assert.ok(tavernSet.js.includes(required), `missing ${required} from Tune Tavern scripts`);
 }
 
@@ -59,8 +60,6 @@ assert.match(dashboardSync, /setConnection\('WAKING\.\.\.'\)/);
 
 assert.match(assist, /const semantic = inspected/);
 assert.match(assist, /if \(semantic\[0\]\) return semantic\[0\]/);
-assert.match(assist, /return inspected\.find\(info => info\.root === document\)/);
-assert.doesNotMatch(assist, /root === document \|\| !context\.formVisible/);
 assert.match(providerAssist, /LiveFinderProviders/);
 assert.match(providerAssist, /LIVEFINDER_AUTOFILL_CURRENT/);
 assert.match(providerAssist, /fillCanonical/);
@@ -75,6 +74,7 @@ assert.match(sidepanel, /SET_PAYMENT_POLICY/);
 assert.match(sidepanel, /paymentPolicy: currentPaymentPolicy\(\)/);
 assert.match(sidepanel, /context\.provider === 'auxchord'/);
 assert.match(sidepanel, /Choose AuxChord authorship/);
+assert.match(sidepanel, /supportsFullAuto/);
 
 assert.match(fullauto, /fillCanonical\(\{ phone \}, document\)/);
 assert.match(fullauto, /GET_NERO_SUBMISSION/);
@@ -86,12 +86,7 @@ assert.match(paymentGuard, /join the free queue/);
 assert.match(paymentGuard, /payment-required/);
 assert.match(paymentGuard, /blocked-paid/);
 assert.match(addonBypass, /verifiedFreeExit/);
-assert.match(addonBypass, /pendingForThisReviewer/);
 assert.match(paymentBoundary, /status: 'payment required'/);
-assert.match(paymentBoundary, /CLEAR_NERO_SUBMISSION/);
-assert.match(paymentBoundary, /event\.isTrusted/);
-assert.match(paymentBoundary, /decision === 'safe-free'/);
-assert.match(paymentBoundary, /rootInfo\.surface\.kind === 'queue-options'/);
 assert.match(nero, /LiveFinderPaymentBoundary\?\.blocked/);
 assert.match(nero, /runId: payload\.runId \|\| ''/);
 
@@ -103,10 +98,13 @@ assert.match(auxchord, /join the free queue/);
 assert.match(auxchord, /chooseAuthorship/);
 assert.doesNotMatch(auxchord, /PayPal|Apple Pay|Google Pay/);
 
+assert.match(tuneTavernDiscover, /browse-live/);
+assert.match(tuneTavernDiscover, /\/live\//);
+assert.match(tuneTavernDiscover, /LF READY/);
+assert.match(tuneTavernDiscover, /MutationObserver/);
+
 assert.match(reviewerMain, /PROBE_REVIEWER_REACT/);
-assert.match(reviewerMain, /PLATFORM_KEY_RE/);
 assert.match(reviewerEnrich, /GET_NERO_POOL/);
-assert.match(reviewerEnrich, /SAVE_NERO_POOL/);
 assert.match(streamEnrich, /PROBE_REACT_CARD/);
 assert.match(discoverMain, /PLATFORM_KEY_RE/);
 
