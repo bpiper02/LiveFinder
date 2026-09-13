@@ -20,6 +20,11 @@
   let active='live';
   let expanded=false;
 
+  const formatCount=value=>{
+    const number=Math.max(0,Math.floor(Number(value)||0));
+    return number<100?String(number).padStart(2,'0'):String(number);
+  };
+
   const actionBar=document.createElement('div');
   actionBar.className='poolActionBar';
   actionBar.innerHTML='<label for="poolSongChoice"><span>Song to submit</span><select id="poolSongChoice" aria-label="Song to submit"><option value="">Add a song first</option></select></label><small>Pick once, then choose reviewers below.</small>';
@@ -166,7 +171,7 @@
     const c=counts();
     for(const [key,value] of Object.entries(c)){
       const output=document.querySelector(`[data-pool-count="${key}"]`);
-      if(output)output.textContent=String(value);
+      if(output)output.textContent=formatCount(value);
     }
     syncSongPicker();
     decoratePoolCards();
