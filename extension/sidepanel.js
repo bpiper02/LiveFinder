@@ -1,6 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const fields = ['artist', 'title', 'songUrl', 'email', 'instagram', 'note'];
+  const fields = ['artist', 'title', 'songUrl', 'email', 'phone', 'instagram', 'note'];
+  const PHONE_KEY = 'livefinder-assist-phone';
   let library = [];
   let activeTab = null;
   let context = null;
@@ -8,14 +9,18 @@
 
   function setResult(title, detail, kind = '') {
     const box = $('result');
-    box.className = `result${kind ? ` ${kind}` : ''}`;
+    box.className = `resultWindow${kind ? ` ${kind}` : ''}`;
     box.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail || '')}</span>`;
   }
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'
     }[char]));
+  }
+
+  function rememberedPhone() {
+    return localStorage.getItem(PHONE_KEY) || '';
   }
 
   function draftFromForm() {
@@ -23,7 +28,13 @@
   }
 
   function applyDraft(song = {}) {
-    for (const key of fields) $(key).value = String(song?.[key] || '');
+    for (const key of fields) {
+      if (key === 'phone') {
+        $(key).value = String(song?.phone || rememberedPhone());
+        continue;
+      }
+      $(key).value = String(song?.[key] || '');
+    }
   }
 
   function selectedSong() {
@@ -47,9 +58,10 @@
 
     const song = selectedSong();
     if (song) applyDraft(song);
+    else applyDraft({});
     $('libraryHint').textContent = library.length
-      ? `${library.length} saved song${library.length === 1 ? '' : 's'} synced. Changes below are one-off unless you update the dashboard.`
-      : 'No synced songs yet. You can still enter a manual draft, or open the LiveFinder dashboard once to sync saved songs.';
+      ? `${library.length} saved song${library.length === 1 ? '' : 's'} synced. Edits are one-off; your phone is remembered in Assist.`
+      : 'No synced songs yet. Enter a manual draft, or open the LiveFinder dashboard once to sync saved songs.';
   }
 
   async function getActiveTab() {
@@ -75,9 +87,9 @@
     context = null;
 
     if (!tab?.id || !/^https?:\/\/(?:www\.)?nero\.fan\//i.test(tab.url || '')) {
-      $('siteBadge').textContent = 'unsupported';
+      $('siteBadge').textContent = 'UNSUPPORTED';
       $('contextTitle').textContent = 'Open a Nero reviewer page';
-      $('contextDetail').textContent = 'The autofill core is generic, but Nero is the first supported adapter.';
+      $('contextDetail').textContent = 'Nero is the first supported adapter. Open a reviewer page to autofill or submit.';
       $('autofillCurrent').disabled = true;
       $('runFullAuto').disabled = true;
       return;
@@ -87,7 +99,7 @@
       const response = await chrome.tabs.sendMessage(tab.id, { type: 'LIVEFINDER_ASSIST_STATUS' });
       context = response?.context || null;
       if (!response?.ok || !context?.supported) {
-        $('siteBadge').textContent = 'nero';
+        $('siteBadge').textContent = 'NERO';
         $('contextTitle').textContent = 'Nero page detected';
         $('contextDetail').textContent = 'Open a specific reviewer page to use LiveFinder Assist.';
         $('autofillCurrent').disabled = true;
@@ -95,17 +107,17 @@
         return;
       }
 
-      $('siteBadge').textContent = 'nero';
+      $('siteBadge').textContent = 'NERO';
       $('contextTitle').textContent = context.handle ? `@${context.handle}` : 'Nero reviewer';
       $('contextDetail').textContent = context.formVisible
-        ? `${context.fieldCount} visible form field${context.fieldCount === 1 ? '' : 's'} detected. Assist can fill this step.`
-        : 'Reviewer detected. Open the Nero submission form, or run the full free submission.';
+        ? `${context.fieldCount} visible form field${context.fieldCount === 1 ? '' : 's'} detected. Autofill can handle this step.`
+        : 'Reviewer detected. Open the submission form, or run the full free submission.';
       $('autofillCurrent').disabled = !context.formVisible;
       $('runFullAuto').disabled = false;
     } catch (err) {
-      $('siteBadge').textContent = 'reload tab';
+      $('siteBadge').textContent = 'RELOAD TAB';
       $('contextTitle').textContent = 'LiveFinder is not connected to this Nero tab';
-      $('contextDetail').textContent = 'Refresh the Nero tab once after reloading/updating the extension.';
+      $('contextDetail').textContent = 'Refresh the Nero tab once after reloading or updating the extension.';
       $('autofillCurrent').disabled = true;
       $('runFullAuto').disabled = true;
     }
@@ -124,7 +136,7 @@
     const tab = await getActiveTab();
     if (!tab?.id) return;
     const draft = draftFromForm();
-    setResult('Scanning visible form…', 'LiveFinder will only fill confident matches.');
+    setResult('Scanning visible form…', 'Only confident matches will be filled.');
 
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { type: 'LIVEFINDER_AUTOFILL_CURRENT', draft });
@@ -176,6 +188,7 @@
       title: draft.title,
       songUrl: draft.songUrl,
       email: draft.email,
+      phone: draft.phone,
       instagram: draft.instagram,
       note: draft.note
     };
@@ -194,7 +207,7 @@
     };
 
     $('runFullAuto').disabled = true;
-    setResult('Starting full free submission…', 'The Nero tab will refresh once, then LiveFinder will use the existing proven free-flow automation.');
+    setResult('Starting full free submission…', 'The Nero tab will refresh once, then LiveFinder will use the existing free-flow automation.');
 
     try {
       const response = await chrome.runtime.sendMessage({ type: 'STORE_NERO_SUBMISSION', payload });
@@ -214,7 +227,16 @@
     applyDraft(selectedSong() || {});
   });
 
-  $('resetDraft').addEventListener('click', () => applyDraft(selectedSong() || {}));
+  $('phone').addEventListener('input', () => {
+    const value = $('phone').value.trim();
+    if (value) localStorage.setItem(PHONE_KEY, value);
+    else localStorage.removeItem(PHONE_KEY);
+  });
+
+  $('resetDraft').addEventListener('click', () => {
+    applyDraft(selectedSong() || {});
+    setResult('Draft reset', selectedSong() ? 'Restored the selected saved song.' : 'Cleared the manual draft.');
+  });
   $('autofillCurrent').addEventListener('click', autofillCurrent);
   $('runFullAuto').addEventListener('click', runFullAuto);
 
