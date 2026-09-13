@@ -3,11 +3,13 @@
   const openCards=document.getElementById('poolOpen');
   const otherCards=document.getElementById('poolOther');
   const viewsRoot=document.getElementById('poolViews');
+  const tablist=document.getElementById('poolTabs');
   const library=document.getElementById('reviewersSetup');
   if(library)library.open=false;
-  if(!liveCards||!openCards||!otherCards||!viewsRoot)return;
+  if(!liveCards||!openCards||!otherCards||!viewsRoot||!tablist)return;
 
   const PREVIEW_COUNT=8;
+  const SONG_KEY='livefinder-pool-song-id';
   const cards={live:liveCards,open:openCards,other:otherCards};
   const views={
     live:document.getElementById('poolViewLive'),
@@ -17,6 +19,12 @@
   const buttons=[...document.querySelectorAll('[data-pool-filter]')];
   let active='live';
   let expanded=false;
+
+  const actionBar=document.createElement('div');
+  actionBar.className='poolActionBar';
+  actionBar.innerHTML='<label for="poolSongChoice"><span>Song to submit</span><select id="poolSongChoice" aria-label="Song to submit"><option value="">Add a song first</option></select></label><small>Pick once, then choose reviewers below.</small>';
+  tablist.insertAdjacentElement('beforebegin',actionBar);
+  const songChoice=actionBar.querySelector('#poolSongChoice');
 
   const disclosure=document.createElement('div');
   disclosure.className='poolDisclosure';
@@ -28,6 +36,7 @@
 
   const cardNodes=el=>el?[...el.querySelectorAll('.poolCard')]:[];
   const countCards=el=>cardNodes(el).length;
+  const poolSelects=()=>[...viewsRoot.querySelectorAll('select[data-pool-url]')];
 
   function counts(){
     const live=countCards(cards.live);
@@ -110,14 +119,75 @@
     applyDisclosure(c);
   }
 
+  function songOptions(){
+    const source=poolSelects()[0];
+    if(!source)return [];
+    return [...source.options]
+      .filter(option=>option.value)
+      .map(option=>({value:option.value,label:option.textContent||option.value}));
+  }
+
+  function syncSongPicker(){
+    const options=songOptions();
+    const previous=songChoice.value||localStorage.getItem(SONG_KEY)||'';
+    songChoice.innerHTML=options.length
+      ? '<option value="">Choose a song…</option>'+options.map(option=>`<option value="${option.value.replace(/"/g,'&quot;')}">${option.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</option>`).join('')
+      : '<option value="">Add a song first</option>';
+    const usable=options.some(option=>option.value===previous)?previous:(options[0]?.value||'');
+    songChoice.value=usable;
+    songChoice.disabled=!options.length;
+    if(usable)localStorage.setItem(SONG_KEY,usable);
+    else localStorage.removeItem(SONG_KEY);
+  }
+
+  function decoratePoolCards(){
+    const selectedSong=songChoice.value;
+    for(const select of poolSelects()){
+      select.classList.add('poolInlineSongSelect');
+      select.tabIndex=-1;
+      select.setAttribute('aria-hidden','true');
+      const card=select.closest('.poolCard');
+      if(!card)continue;
+      let button=card.querySelector('[data-pool-submit-button]');
+      if(!button){
+        button=document.createElement('button');
+        button.type='button';
+        button.className='poolSubmitButton';
+        button.dataset.poolSubmitButton='1';
+        button.textContent='Submit';
+        select.insertAdjacentElement('afterend',button);
+      }
+      button.disabled=!selectedSong;
+      button.title=selectedSong?'Submit selected song to this reviewer':'Choose a song above first';
+    }
+  }
+
   function sync(){
     const c=counts();
     for(const [key,value] of Object.entries(c)){
       const output=document.querySelector(`[data-pool-count="${key}"]`);
       if(output)output.textContent=String(value);
     }
+    syncSongPicker();
+    decoratePoolCards();
     applyFilter(active,c);
   }
+
+  songChoice.addEventListener('change',()=>{
+    if(songChoice.value)localStorage.setItem(SONG_KEY,songChoice.value);
+    else localStorage.removeItem(SONG_KEY);
+    decoratePoolCards();
+  });
+
+  viewsRoot.addEventListener('click',event=>{
+    const button=event.target instanceof Element?event.target.closest('[data-pool-submit-button]'):null;
+    if(!button)return;
+    const card=button.closest('.poolCard');
+    const select=card?.querySelector('select[data-pool-url]');
+    if(!select||!songChoice.value)return;
+    select.value=songChoice.value;
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  });
 
   disclosureToggle.addEventListener('click',()=>{
     expanded=!expanded;
