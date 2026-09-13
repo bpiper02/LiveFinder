@@ -17,7 +17,7 @@ if(!normalizeNeroUrl||!reviewerKey||!filterAvailablePool)throw new Error('LiveFi
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
-const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 let bridgeReady=false;
 let bridgeVersion='';
 let staleReloadScheduled=false;
@@ -47,8 +47,51 @@ function canonicalReviewerLabel(url,fallback=''){
   });
 }
 
+function destinationFor(url,stored={}){
+  const item=poolItemForReviewer(url)||{};
+  const streamUrl=String(stored.streamUrl||item.streamUrl||'');
+  const streamPlatform=String(stored.streamPlatform||item.streamPlatform||'');
+  const streamConfidence=String(stored.streamConfidence||item.streamConfidence||'');
+  if(streamUrl){
+    return {
+      href:streamUrl,
+      label:streamConfidence==='social'?`${streamPlatform||'Stream'} ↗`:`${streamPlatform||'Stream'} live ↗`,
+      stream:true
+    };
+  }
+  try{return{href:normalizeNeroUrl(url),label:'Nero ↗',stream:false};}catch{return{href:'',label:'',stream:false};}
+}
+
+function copyPoolMetadata(target,item){
+  if(!target||!item)return false;
+  let changed=false;
+  const nextLabel=bestReviewerLabel({url:target.reviewerUrl||target.neroUrl,poolDisplayName:item.displayName,savedLabel:target.reviewer||target.label});
+  if('reviewer' in target&&nextLabel&&target.reviewer!==nextLabel){target.reviewer=nextLabel;changed=true;}
+  if('label' in target&&nextLabel&&target.label!==nextLabel){target.label=nextLabel;changed=true;}
+  for(const key of ['streamUrl','streamPlatform','streamConfidence']){
+    if(item[key]&&target[key]!==item[key]){target[key]=item[key];changed=true;}
+  }
+  if(typeof item.streamDerived==='boolean'&&target.streamDerived!==item.streamDerived){target.streamDerived=item.streamDerived;changed=true;}
+  return changed;
+}
+
+function syncPoolMetadataToState(){
+  let changed=false;
+  for(const reviewer of state.reviewers){
+    const item=poolItemForReviewer(reviewer.neroUrl);
+    if(item&&copyPoolMetadata(reviewer,item))changed=true;
+  }
+  for(const submission of state.submissions){
+    const item=poolItemForReviewer(submission.reviewerUrl);
+    if(item&&copyPoolMetadata(submission,item))changed=true;
+  }
+  if(changed)save();
+  return changed;
+}
+
 function migrateState(){
   state.reviewers=state.reviewers.map(r=>({
+    ...r,
     id:r.id||uid(),
     neroUrl:r.neroUrl,
     label:bestReviewerLabel({url:r.neroUrl,savedLabel:r.label||r.name||''})
@@ -91,9 +134,11 @@ function renderQueueControls(){
 }
 
 function poolCard(item){
-  const label=item.displayName||reviewerLabel(item.neroUrl);
+  const label=bestReviewerLabel({url:item.neroUrl,poolDisplayName:item.displayName});
+  const destination=destinationFor(item.neroUrl,item);
+  const name=destination.href?`<a class="poolReviewerLink" href="${esc(destination.href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(destination.label)}</small></a>`:`<strong>${esc(label)}</strong>`;
   const songs=state.songs.length?`<select data-pool-url="${esc(item.neroUrl)}" data-pool-label="${esc(label)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>';
-  return `<div class="card poolCard"><div class="poolTop"><div><strong>${esc(label)}</strong><small>${esc(item.neroUrl)}</small></div><span class="statusChip">${esc(item.status)}</span></div>${songs}</div>`;
+  return `<div class="card poolCard"><div class="poolTop"><div>${name}</div><span class="statusChip">${esc(item.status)}</span></div>${songs}</div>`;
 }
 
 function columnHtml(items,emptyCopy){
@@ -145,17 +190,21 @@ function renderSongs(){
 }
 
 function renderReviewers(){
-  $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>`
-    <div class="card reviewer"><div><strong>${esc(canonicalReviewerLabel(r.neroUrl,r.label))}</strong><small>${esc(r.neroUrl)}</small></div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${esc(r.id)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${esc(r.id)}">Delete</button></div></div>`).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
+  $('reviewers').innerHTML=state.reviewers.length?state.reviewers.map(r=>{
+    const destination=destinationFor(r.neroUrl,r);
+    const label=canonicalReviewerLabel(r.neroUrl,r.label);
+    const reviewerLink=destination.href?`<a class="historyReviewer" href="${esc(destination.href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(destination.label)}</small></a>`:`<strong>${esc(label)}</strong>`;
+    return `<div class="card reviewer"><div>${reviewerLink}</div><div class="reviewerActions">${state.songs.length?`<select data-reviewer="${esc(r.id)}"><option value="" selected disabled>Submit song…</option>${state.songs.map(s=>`<option value="${esc(s.id)}">${esc(s.artist)} — ${esc(s.title)}</option>`).join('')}</select>`:'<small>Add a song first</small>'}<button class="iconButton danger" type="button" data-action="delete-reviewer" data-id="${esc(r.id)}">Delete</button></div></div>`;
+  }).join(''):'<p class="empty">Paste a Nero reviewer link to get started.</p>';
 }
 
 function renderHistory(){
   $('submissionRows').innerHTML=state.submissions.length?state.submissions.map(s=>{
     const label=canonicalReviewerLabel(s.reviewerUrl,s.reviewer);
-    const href=(()=>{try{return normalizeNeroUrl(s.reviewerUrl);}catch{return ''}})();
-    const reviewerCell=href?`<a class="historyReviewer" href="${esc(href)}" target="_blank" rel="noopener noreferrer"><strong>${esc(label)}</strong><small>${esc(href)}</small></a>`:`<span>${esc(label)}</span>`;
+    const destination=destinationFor(s.reviewerUrl,s);
+    const reviewerCell=destination.href?`<a class="historyReviewer" href="${esc(destination.href)}" target="_blank" rel="noopener noreferrer" title="${destination.stream?'Open reviewer live stream':'Open reviewer on Nero'}"><strong>${esc(label)}</strong><small>${esc(destination.label)}</small></a>`:`<span>${esc(label)}</span>`;
     const watch=watchForSubmission(s);
-    const watched=watch?`<small class="watchState">${watch.enabled===false?'watch paused':'watching'}${Number.isFinite(watch.latestAhead)?` · ${watch.latestAhead} ahead`:''}</small>`:'';
+    const watched=watch?`<small class="watchState">${watch.enabled===false?'queue alert paused':'queue alert active'}</small>`:'';
     return `<div class="tr"><span>${reviewerCell}</span><span>${esc(s.song)}</span><span class="statusCell"><span class="status">${esc(statusText(s))}</span>${watched}</span><span>${esc(s.createdAt)}</span><span><button class="iconButton danger" type="button" data-action="delete-submission" data-id="${esc(s.id)}">Delete</button></span></div>`;
   }).join(''):'<p class="empty">Nothing submitted yet.</p>';
 }
@@ -228,16 +277,20 @@ $('scanQueuesNow').onclick=()=>{
 function submitPoolReviewer(url,label,songId){
   let normalized;
   try{normalized=normalizeNeroUrl(url);}catch{return;}
+  const item=poolItemForReviewer(normalized);
   let reviewer=state.reviewers.find(r=>reviewerKey(r.neroUrl)===reviewerKey(normalized));
   if(!reviewer){
     reviewer={id:uid(),neroUrl:normalized,label:label||reviewerLabel(normalized)};
+    if(item)copyPoolMetadata(reviewer,item);
     state.reviewers.push(reviewer);
     save();
     renderReviewers();
-  }else if(label&&reviewer.label!==label){
-    reviewer.label=label;
-    save();
-    renderReviewers();
+  }else{
+    let changed=false;
+    const nextLabel=bestReviewerLabel({url:normalized,poolDisplayName:item?.displayName,savedLabel:reviewer.label,fallback:label});
+    if(nextLabel&&reviewer.label!==nextLabel){reviewer.label=nextLabel;changed=true;}
+    if(item&&copyPoolMetadata(reviewer,item))changed=true;
+    if(changed){save();renderReviewers();}
   }
   submitToReviewer(reviewer.id,songId);
 }
@@ -259,7 +312,10 @@ function submitToReviewer(reviewerId,songId){
     if(msg?.source!=='livefinder-extension')return;
     if(msg.type==='NERO_SUBMISSION_STORED'){
       settled=true;cleanup();
-      state.submissions.unshift({id:runId,reviewerUrl:reviewer.neroUrl,reviewer:canonicalReviewerLabel(reviewer.neroUrl,reviewer.label),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',queueAhead:null});
+      const item=poolItemForReviewer(reviewer.neroUrl);
+      const submission={id:runId,reviewerUrl:reviewer.neroUrl,reviewer:canonicalReviewerLabel(reviewer.neroUrl,reviewer.label),songId:song.id,song:`${song.artist} — ${song.title}`,createdAt:new Date().toLocaleString(),createdAtMs:Date.now(),status:'automation started',queueAhead:null};
+      if(item)copyPoolMetadata(submission,item);
+      state.submissions.unshift(submission);
       save();
       renderHistory();
       renderPool(true);
@@ -371,6 +427,8 @@ window.addEventListener('message',event=>{
     const nextSignature=poolSignature(nextPool);
     discoveredPool=nextPool;
     poolScrapedAt=Number(pool.scrapedAt||0);
+    const metadataChanged=syncPoolMetadataToState();
+    if(metadataChanged){renderReviewers();renderHistory();}
     if(nextSignature!==discoveredPoolSignature){
       discoveredPoolSignature=nextSignature;
       renderPool();
