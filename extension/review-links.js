@@ -4,7 +4,12 @@
   }
 
   function parseUrl(raw) {
-    try { return new URL(cleanRaw(raw)); } catch { return null; }
+    let value = cleanRaw(raw);
+    if (!value) return null;
+    if (/^(?:www\.)?(?:tiktok\.com|youtube\.com|youtu\.be|twitch\.tv|kick\.com|instagram\.com)\//i.test(value)) {
+      value = `https://${value.replace(/^www\./i, 'www.')}`;
+    }
+    try { return new URL(value); } catch { return null; }
   }
 
   function platformFor(input) {
@@ -17,6 +22,30 @@
     if (host === 'kick.com' || host.endsWith('.kick.com')) return 'Kick';
     if (host === 'instagram.com' || host.endsWith('.instagram.com')) return 'Instagram';
     return '';
+  }
+
+  function inferredValues(raw, hint = '') {
+    const value = cleanRaw(raw);
+    if (!value) return [];
+    const values = [value];
+    const lowerHint = String(hint || '').toLowerCase();
+    const token = value.replace(/^@/, '').trim();
+    const handleLike = /^[a-z0-9._-]{2,100}$/i.test(token);
+
+    if (/^(?:www\.)?(?:tiktok\.com|youtube\.com|youtu\.be|twitch\.tv|kick\.com|instagram\.com)\//i.test(value)) {
+      values.push(`https://${value.replace(/^www\./i, 'www.')}`);
+    }
+
+    if (!handleLike) return [...new Set(values)];
+    if (/tiktok/.test(lowerHint)) values.push(`https://www.tiktok.com/@${token}`);
+    if (/youtube/.test(lowerHint)) {
+      if (/channel(?:id)?/.test(lowerHint) && /^UC[a-z0-9_-]+$/i.test(token)) values.push(`https://www.youtube.com/channel/${token}`);
+      else values.push(`https://www.youtube.com/@${token}`);
+    }
+    if (/twitch/.test(lowerHint)) values.push(`https://www.twitch.tv/${token}`);
+    if (/kick/.test(lowerHint)) values.push(`https://kick.com/${token}`);
+    if (/instagram|\big\b/.test(lowerHint)) values.push(`https://www.instagram.com/${token}`);
+    return [...new Set(values)];
   }
 
   function normalizeReviewTarget(raw, options = {}) {
@@ -74,12 +103,12 @@
     const candidates = [];
     for (const value of values || []) {
       const raw = typeof value === 'string' ? value : value?.value;
-      const candidate = normalizeReviewTarget(raw, {
-        isLive: options.isLive,
-        hint: typeof value === 'object' ? value?.hint : '',
-        label: typeof value === 'object' ? value?.label : ''
-      });
-      if (candidate) candidates.push(candidate);
+      const hint = typeof value === 'object' ? value?.hint : '';
+      const label = typeof value === 'object' ? value?.label : '';
+      for (const inferred of inferredValues(raw, hint)) {
+        const candidate = normalizeReviewTarget(inferred, { isLive: options.isLive, hint, label });
+        if (candidate) candidates.push(candidate);
+      }
     }
     candidates.sort((a, b) => b.score - a.score);
     const best = candidates[0] || null;
@@ -88,7 +117,7 @@
     return best;
   }
 
-  const api = { cleanRaw, platformFor, normalizeReviewTarget, bestReviewTarget };
+  const api = { cleanRaw, platformFor, inferredValues, normalizeReviewTarget, bestReviewTarget };
   globalThis.LiveFinderReviewLinks = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
