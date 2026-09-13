@@ -21,7 +21,7 @@ const discoverMain = fs.readFileSync('extension/discover-main.js', 'utf8');
 const background = fs.readFileSync('extension/background.js', 'utf8');
 const dashboardSync = fs.readFileSync('dashboard-sync.js', 'utf8');
 
-assert.equal(manifest.version, '0.7.3');
+assert.equal(manifest.version, '0.8.0');
 assert.ok(manifest.host_permissions.includes('https://auxchord.app/*'));
 assert.ok(manifest.host_permissions.includes('https://www.tunetavern.app/*'));
 
