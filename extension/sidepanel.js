@@ -1,7 +1,9 @@
 (() => {
   const $ = id => document.getElementById(id);
+  const providers = globalThis.LiveFinderProviders;
   const fields = ['artist', 'title', 'songUrl', 'email', 'phone', 'instagram', 'note'];
   const PHONE_KEY = 'livefinder-assist-phone';
+  const AUTHORSHIP_KEY = 'livefinder-assist-authorship';
   let library = [];
   let activeTab = null;
   let context = null;
@@ -18,12 +20,16 @@
 
   function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
     }[char]));
   }
 
   function rememberedPhone() {
     return localStorage.getItem(PHONE_KEY) || '';
+  }
+
+  function rememberedAuthorship() {
+    return localStorage.getItem(AUTHORSHIP_KEY) || '';
   }
 
   function currentPaymentPolicy() {
@@ -47,7 +53,6 @@
       const response = await chrome.runtime.sendMessage({ type: 'SET_PAYMENT_POLICY', policy: next });
       if (response?.ok) paymentPolicy = response.policy === 'show-paid' ? 'show-paid' : 'free-only';
     } catch {
-      // Safe fallback is always free-only when extension state cannot be saved.
       paymentPolicy = 'free-only';
     }
     if ($('paymentPolicy')) $('paymentPolicy').value = paymentPolicy;
@@ -65,6 +70,7 @@
       }
       $(key).value = String(song?.[key] || '');
     }
+    if ($('authorship')) $('authorship').value = String(song?.authorship || rememberedAuthorship());
   }
 
   function selectedSong() {
@@ -90,7 +96,7 @@
     if (song) applyDraft(song);
     else applyDraft({});
     $('libraryHint').textContent = library.length
-      ? `${library.length} saved song${library.length === 1 ? '' : 's'} synced. Edits are one-off; your phone is remembered in Assist.`
+      ? `${library.length} saved song${library.length === 1 ? '' : 's'} synced. Edits are one-off; phone and AuxChord authorship are remembered in Assist.`
       : 'No synced songs yet. Enter a manual draft, or open the LiveFinder dashboard once to sync saved songs.';
   }
 
@@ -101,24 +107,14 @@
   }
 
   function fallbackContextFromTab(tab) {
-    try {
-      const url = new URL(tab?.url || '');
-      if (!/(^|\.)nero\.fan$/i.test(url.hostname)) return null;
-      const handle = decodeURIComponent(url.pathname.split('/').filter(Boolean)[0] || '').replace(/^@/, '');
-      if (!handle || handle.toLowerCase() === 'discover') return null;
-      return {
-        supported: true,
-        site: 'nero',
-        url: tab.url,
-        handle,
-        reviewerUrl: `https://www.nero.fan/${handle}/live`,
-        formVisible: false,
-        fieldCount: 0,
-        assistReachable: false
-      };
-    } catch {
-      return null;
-    }
+    const base = providers?.contextForUrl(tab?.url || '');
+    if (!base) return null;
+    return {
+      ...base,
+      formVisible: false,
+      fieldCount: 0,
+      assistReachable: false
+    };
   }
 
   async function sendTabMessage(tabId, message, attempts = 3) {
@@ -147,51 +143,66 @@
     }
   }
 
+  function contextTitleFor(ctx) {
+    if (!ctx) return 'Unsupported page';
+    if (ctx.handle) return ctx.handle.startsWith('@') ? ctx.handle : `@${ctx.handle}`;
+    if (ctx.reviewerId) return `${ctx.providerLabel || 'Reviewer'} #${ctx.reviewerId}`;
+    if (ctx.kind === 'discovery') return `${ctx.providerLabel || 'Provider'} discovery`;
+    return ctx.providerLabel || 'Reviewer page';
+  }
+
+  function applyProviderUi(ctx) {
+    const provider = ctx?.provider || 'unknown';
+    const label = ctx?.providerLabel || providers?.providerLabel(provider) || 'Unsupported';
+    $('siteBadge').textContent = provider === 'unknown' ? 'UNSUPPORTED' : label.toUpperCase();
+    if ($('authorshipRow')) $('authorshipRow').hidden = provider !== 'auxchord';
+    const supported = !!ctx?.supported;
+    $('autofillCurrent').disabled = !supported;
+    $('runFullAuto').disabled = !supported || !ctx?.supportsFullAuto;
+    if (supported && !ctx?.supportsFullAuto) $('runFullAuto').title = `${label} full auto is not enabled yet. Use Autofill this step.`;
+    else $('runFullAuto').title = '';
+  }
+
   async function refreshContext() {
     const tab = await getActiveTab();
     context = null;
+    const fallback = fallbackContextFromTab(tab);
 
-    if (!tab?.id || !/^https?:\/\/(?:www\.)?nero\.fan\//i.test(tab.url || '')) {
+    if (!tab?.id || !fallback) {
       $('siteBadge').textContent = 'UNSUPPORTED';
-      $('contextTitle').textContent = 'Open a Nero reviewer page';
-      $('contextDetail').textContent = 'Nero is the first supported adapter. Open a reviewer page to autofill or submit.';
+      $('contextTitle').textContent = 'Open a supported review page';
+      $('contextDetail').textContent = 'LiveFinder currently supports Nero, AuxChord, and Tune Tavern review pages.';
       $('autofillCurrent').disabled = true;
       $('runFullAuto').disabled = true;
+      if ($('authorshipRow')) $('authorshipRow').hidden = true;
       return;
     }
 
-    const fallback = fallbackContextFromTab(tab);
-    // On a Nero reviewer page, never turn Autofill into a dead stop-sign control.
-    // If the content script is waking up, the click action retries and explains what to do.
-    $('autofillCurrent').disabled = !fallback;
-    $('runFullAuto').disabled = !fallback;
+    context = fallback;
+    applyProviderUi(context);
 
     try {
       const response = await sendTabMessage(tab.id, { type: 'LIVEFINDER_ASSIST_STATUS' });
       context = response?.context || fallback;
-      if (!response?.ok || !context?.supported) {
-        context = fallback;
-        $('siteBadge').textContent = fallback ? 'NERO' : 'UNSUPPORTED';
-        $('contextTitle').textContent = fallback ? `@${fallback.handle}` : 'Nero page detected';
-        $('contextDetail').textContent = fallback
-          ? 'Reviewer detected. Open a submission step, then press Autofill this step.'
+      applyProviderUi(context);
+      $('contextTitle').textContent = contextTitleFor(context);
+      if (!context?.supported) {
+        $('contextDetail').textContent = context.kind === 'discovery'
+          ? 'Choose a specific live reviewer/session first.'
           : 'Open a specific reviewer page to use LiveFinder Assist.';
         return;
       }
-
       context.assistReachable = true;
-      $('siteBadge').textContent = 'NERO';
-      $('contextTitle').textContent = context.handle ? `@${context.handle}` : 'Nero reviewer';
       $('contextDetail').textContent = context.formVisible
         ? `${context.fieldCount} visible form field${context.fieldCount === 1 ? '' : 's'} detected. Autofill can handle this step.`
-        : 'Reviewer detected. Open a submission step, then press Autofill this step — or run the full free submission.';
+        : context.supportsFullAuto
+          ? 'Reviewer detected. Open a submission step and autofill it, or run the full free submission.'
+          : 'Reviewer detected. Open the submission form, then use Autofill this step.';
     } catch (err) {
       context = fallback;
-      $('siteBadge').textContent = fallback ? 'NERO' : 'RELOAD TAB';
-      $('contextTitle').textContent = fallback ? `@${fallback.handle}` : 'LiveFinder is not connected to this Nero tab';
-      $('contextDetail').textContent = fallback
-        ? 'Assist is waking on this tab. You can still press Autofill this step; LiveFinder will retry before asking you to refresh.'
-        : 'Refresh the Nero tab once after reloading or updating the extension.';
+      applyProviderUi(context);
+      $('contextTitle').textContent = contextTitleFor(context);
+      $('contextDetail').textContent = 'Assist is waking on this tab. You can still press Autofill this step; LiveFinder will retry before asking you to refresh.';
     }
   }
 
@@ -206,8 +217,9 @@
 
   async function autofillCurrent() {
     const tab = await getActiveTab();
-    if (!tab?.id || !/^https?:\/\/(?:www\.)?nero\.fan\//i.test(tab.url || '')) {
-      setResult('Open a Nero reviewer first', 'Autofill this step works on an open Nero reviewer submission form.', 'warn');
+    const fallback = fallbackContextFromTab(tab);
+    if (!tab?.id || !fallback?.supported) {
+      setResult('Open a supported reviewer first', 'Autofill this step works on Nero, AuxChord, and Tune Tavern reviewer submission pages.', 'warn');
       return;
     }
     const draft = draftFromForm();
@@ -220,11 +232,9 @@
         await refreshContext();
         return;
       }
-
       const report = response.report || { filled: [], missing: [], failed: [] };
       const filled = report.filled.map(item => item.label).join(', ');
       const missed = [...report.missing, ...report.failed].map(item => item.label).join(', ');
-
       if (report.filled.length) {
         setResult(
           `Filled ${report.filled.length} field${report.filled.length === 1 ? '' : 's'}`,
@@ -236,7 +246,7 @@
       }
       await refreshContext();
     } catch (err) {
-      setResult('Refresh this Nero tab once', 'LiveFinder Assist could not reach the page after three tries. Refresh the reviewer tab, reopen the submission step, then press Autofill this step again.', 'warn');
+      setResult('Refresh this review tab once', 'LiveFinder Assist could not reach the page after three tries. Refresh the tab, reopen the submission step, then try again.', 'warn');
       await refreshContext();
     }
   }
@@ -246,7 +256,11 @@
     if (!tab?.id) return;
     await refreshContext();
     if (!context?.supported) {
-      setResult('Open a reviewer page first', 'Full auto needs a specific Nero reviewer page.', 'warn');
+      setResult('Open a reviewer page first', 'Full auto needs a specific supported reviewer page.', 'warn');
+      return;
+    }
+    if (!context.supportsFullAuto) {
+      setResult('Use Autofill this step here', `${context.providerLabel || 'This provider'} is supported for Assist, but its full-auto controller is not enabled yet.`, 'warn');
       return;
     }
 
@@ -254,6 +268,10 @@
     const missing = validateDraft(draft);
     if (missing.length) {
       setResult('Missing required details', missing.join(', '), 'warn');
+      return;
+    }
+    if (context.provider === 'auxchord' && !$('authorship').value) {
+      setResult('Choose AuxChord authorship', 'AuxChord requires an accurate authorship disclosure before submission. Select the correct option above.', 'warn');
       return;
     }
 
@@ -268,17 +286,22 @@
       instagram: draft.instagram,
       note: draft.note
     };
+    const provider = context.provider || 'nero';
+    const reviewerUrl = context.reviewerUrl || tab.url;
     const reviewer = {
-      neroUrl: context.reviewerUrl || tab.url,
-      label: context.handle ? `@${context.handle}` : 'Nero reviewer'
+      reviewerUrl,
+      neroUrl: reviewerUrl,
+      label: context.handle ? `@${context.handle}` : context.providerLabel || 'Reviewer'
     };
     const payload = {
       source: 'livefinder',
-      origin: 'sidepanel',
+      origin: provider === 'nero' ? 'sidepanel' : 'provider-sidepanel',
+      provider,
       type: 'PREPARE_NERO_SUBMISSION',
       runId: crypto.randomUUID(),
       song,
       reviewer,
+      authorship: context.provider === 'auxchord' ? $('authorship').value : '',
       paymentPolicy: currentPaymentPolicy(),
       createdAt: Date.now()
     };
@@ -292,7 +315,8 @@
       const response = await chrome.runtime.sendMessage({ type: 'STORE_NERO_SUBMISSION', payload });
       if (!response?.ok) throw new Error(response?.error || 'Could not store submission run.');
       await chrome.tabs.reload(tab.id);
-      setResult('Full auto started', 'Watch the Nero tab. LiveFinder never authorizes a charge and will capture your queue position when available.', 'success');
+      const label = context.providerLabel || providers?.providerLabel(provider) || provider;
+      setResult('Full auto started', `Watch the ${label} tab. LiveFinder never authorizes a charge and will use only a verified free path.`, 'success');
     } catch (err) {
       $('runFullAuto').disabled = false;
       setResult('Could not start full auto', String(err?.message || err), 'error');
@@ -312,12 +336,19 @@
     else localStorage.removeItem(PHONE_KEY);
   });
 
+  $('authorship').addEventListener('change', () => {
+    const value = $('authorship').value;
+    if (value) localStorage.setItem(AUTHORSHIP_KEY, value);
+    else localStorage.removeItem(AUTHORSHIP_KEY);
+  });
+
   $('paymentPolicy').addEventListener('change', () => savePaymentPolicy($('paymentPolicy').value));
 
   $('resetDraft').addEventListener('click', () => {
     applyDraft(selectedSong() || {});
     setResult('Draft reset', selectedSong() ? 'Restored the selected saved song.' : 'Cleared the manual draft.');
   });
+
   $('autofillCurrent').addEventListener('click', autofillCurrent);
   $('runFullAuto').addEventListener('click', runFullAuto);
 
