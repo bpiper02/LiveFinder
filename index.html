@@ -72,7 +72,11 @@
 
 <footer class="utilityFooter window">
   <div class="footerMain"><strong>LIVEFINDER</strong><span>Save song details once · find active reviewers · use free submission paths · watch queues.</span></div>
-  <div class="footerMeta"><span>Extension: <strong id="connectionState">CONNECTING...</strong></span><details><summary>Automation notes</summary><p>Local-first. LiveFinder does not auto-select paid skips or add-ons.</p></details></div>
+  <div class="footerMeta">
+    <label class="paymentPolicyControl" for="paymentPolicy"><span>Paid steps</span><select id="paymentPolicy" aria-label="Paid step handling"><option value="free-only">Stop at paid step</option><option value="show-paid">Show paid option, then pause</option></select></label>
+    <span>Extension: <strong id="connectionState">CONNECTING...</strong></span>
+    <details><summary>Automation notes</summary><p>LiveFinder never authorizes a charge. Optional paid add-ons are bypassed when a verified free exit exists; required payment always pauses or stops.</p></details>
+  </div>
 </footer>
 </main>
 <script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script><script src="pool-tabs.js"></script>
