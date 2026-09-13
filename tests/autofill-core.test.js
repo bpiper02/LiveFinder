@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const { scoreFieldFromText } = require('../extension/autofill-core.js');
 
@@ -28,4 +29,15 @@ assert.ok(scoreFieldFromText('email', 'Email address', { type: 'email' }) >= 90)
 assert.ok(scoreFieldFromText('phone', 'Phone number', { type: 'tel', autocomplete: 'tel' }) >= 100);
 assert.ok(scoreFieldFromText('songUrl', 'Track link', { type: 'url' }) >= 70);
 
-console.log('autofill-core regression tests passed');
+const assist = fs.readFileSync('extension/assist.js', 'utf8');
+const sidepanel = fs.readFileSync('extension/sidepanel.js', 'utf8');
+const bridge = fs.readFileSync('extension/bridge.js', 'utf8');
+assert.match(assist, /push\(document\)/);
+assert.doesNotMatch(assist, /root === document \|\| !context\.formVisible/);
+assert.match(sidepanel, /\$\('autofillCurrent'\)\.disabled = false/);
+assert.match(sidepanel, /Open a submission step, then press Autofill this step/);
+assert.match(bridge, /DEFAULT_TIMEOUT_MS = 6000/);
+assert.match(bridge, /BRIDGE_CONNECTING/);
+assert.doesNotMatch(bridge, /console\.warn\('\[LiveFinder\] bridge not ready/);
+
+console.log('autofill-core + Assist regression tests passed');
