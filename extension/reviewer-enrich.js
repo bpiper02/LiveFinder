@@ -1,7 +1,8 @@
 (() => {
   const parseReviewerUrl = globalThis.LiveFinderUrl?.parseReviewerUrl;
   const bestReviewTarget = globalThis.LiveFinderReviewLinks?.bestReviewTarget;
-  if (!parseReviewerUrl || !bestReviewTarget) return;
+  const isExcludedReviewUrl = globalThis.LiveFinderReviewLinks?.isExcludedReviewUrl;
+  if (!parseReviewerUrl || !bestReviewTarget || !isExcludedReviewUrl) return;
 
   const parsed = parseReviewerUrl(location.href, location.origin);
   if (!parsed?.handle || /\/discover(?:\/|$)/i.test(location.pathname)) return;
@@ -73,19 +74,44 @@
     if (done) done(message.candidates || []);
   });
 
+  async function songUrlsToExclude() {
+    const urls = [];
+    const [libraryResult, pendingResult] = await Promise.allSettled([
+      chrome.runtime.sendMessage({ type: 'GET_SONG_LIBRARY' }),
+      chrome.runtime.sendMessage({ type: 'GET_NERO_SUBMISSION' })
+    ]);
+    if (libraryResult.status === 'fulfilled') {
+      for (const song of libraryResult.value?.library?.songs || []) {
+        if (song?.songUrl) urls.push(String(song.songUrl));
+      }
+    }
+    if (pendingResult.status === 'fulfilled') {
+      const songUrl = pendingResult.value?.record?.payload?.song?.songUrl;
+      if (songUrl) urls.push(String(songUrl));
+    }
+    return [...new Set(urls.filter(Boolean))];
+  }
+
+  function scrubContaminatedTarget(item, excludeUrls) {
+    if (!item) return false;
+    const contaminated = isExcludedReviewUrl(item.streamUrl, excludeUrls) || isExcludedReviewUrl(item.reviewUrl, excludeUrls);
+    if (!contaminated) return false;
+    for (const key of ['streamUrl','streamPlatform','streamConfidence','streamDerived','reviewUrl','reviewPlatform','reviewConfidence']) delete item[key];
+    return true;
+  }
+
   async function enrich() {
     if (running) return;
     running = true;
     try {
+      const excludeUrls = await songUrlsToExclude();
       const values = valuesFromPage();
       const reactCandidates = await probeReact();
       for (const candidate of reactCandidates) {
         values.push({ value: candidate.value, hint: candidate.hint || 'reviewer-react', label: '' });
       }
 
-      const target = bestReviewTarget(values, { isLive: isLivePage() });
-      if (!target || target.streamUrl === lastTarget) return;
-
+      const target = bestReviewTarget(values, { isLive: isLivePage(), excludeUrls });
       const response = await chrome.runtime.sendMessage({ type: 'GET_NERO_POOL' });
       const pool = response?.pool;
       const items = Array.isArray(pool?.items) ? pool.items : [];
@@ -94,16 +120,21 @@
         || items.find(candidate => globalThis.LiveFinderUrl?.parseReviewerUrl(candidate?.neroUrl)?.handle?.toLowerCase() === handle);
       if (!item) return;
 
-      if (item.streamUrl === target.streamUrl && item.streamConfidence === target.streamConfidence) {
-        lastTarget = target.streamUrl;
+      let changed = scrubContaminatedTarget(item, excludeUrls);
+      if (target && !(item.streamUrl === target.streamUrl && item.streamConfidence === target.streamConfidence)) {
+        Object.assign(item, target, {
+          reviewUrl: target.streamUrl,
+          reviewPlatform: target.streamPlatform,
+          reviewConfidence: target.streamConfidence
+        });
+        changed = true;
+      }
+
+      if (!changed) {
+        if (target) lastTarget = target.streamUrl;
         return;
       }
 
-      Object.assign(item, target, {
-        reviewUrl: target.streamUrl,
-        reviewPlatform: target.streamPlatform,
-        reviewConfidence: target.streamConfidence
-      });
       const saved = await chrome.runtime.sendMessage({
         type: 'SAVE_NERO_POOL',
         items,
@@ -111,8 +142,9 @@
         diagnostics: pool?.diagnostics || null
       });
       if (saved?.ok) {
-        lastTarget = target.streamUrl;
-        console.log('[LiveFinder] learned direct review link from reviewer page', target.streamPlatform);
+        lastTarget = target?.streamUrl || '';
+        if (target) console.log('[LiveFinder] learned direct review link from reviewer page', target.streamPlatform);
+        else console.log('[LiveFinder] removed submitted-song URL from reviewer metadata');
       }
     } catch {}
     finally { running = false; }
