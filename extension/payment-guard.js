@@ -35,7 +35,7 @@
   ]);
 
   const HARD_PAID_RE = /(?:\$\s?\d|\b(?:usd|eur|gbp|cad|aud)\s?\d|\b(?:pay|purchase|buy|checkout|billing|card number|credit card|debit card|apple pay|google pay|paypal|super skip|throne)\b)/i;
-  const UPSELL_RE = /\b(?:add[- ]?ons?|enhance your submission|cover art|motion cover|feature)\b/i;
+  const UPSELL_RE = /\b(?:add[- ]?ons?|enhance your submission|cover art|motion cover|featured placement|featured submission|feature submission)\b/i;
   const QUEUE_RE = /\b(?:ahead of you|queue|super skip|throne|skip)\b/i;
   const PAYMENT_FORM_RE = /\b(?:card number|expiry|expiration|cvv|cvc|billing address|checkout|payment method|apple pay|google pay|paypal)\b/i;
 
