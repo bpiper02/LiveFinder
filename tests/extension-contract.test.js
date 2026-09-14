@@ -21,7 +21,7 @@ const discoverMain = fs.readFileSync('extension/discover-main.js', 'utf8');
 const background = fs.readFileSync('extension/background.js', 'utf8');
 const dashboardSync = fs.readFileSync('dashboard-sync.js', 'utf8');
 
-assert.equal(manifest.version, '0.8.1');
+assert.equal(manifest.version, '0.8.2');
 assert.ok(manifest.host_permissions.includes('https://auxchord.app/*'));
 assert.ok(manifest.host_permissions.includes('https://www.tunetavern.app/*'));
 
@@ -85,8 +85,13 @@ assert.match(paymentGuard, /wait in the free queue/);
 assert.match(paymentGuard, /join the free queue/);
 assert.match(paymentGuard, /payment-required/);
 assert.match(paymentGuard, /blocked-paid/);
+assert.doesNotMatch(paymentGuard, /\|feature\)\\b/);
 assert.match(addonBypass, /verifiedFreeExit/);
 assert.match(paymentBoundary, /status: 'payment required'/);
+assert.match(paymentBoundary, /function actionRoot\(target\)/);
+assert.match(paymentBoundary, /blocked explicit paid programmatic action/);
+assert.match(paymentBoundary, /local monetized surface/);
+assert.doesNotMatch(paymentBoundary, /const rootInfo = roots\(\)\[0\];\s*if \(!rootInfo \|\| rootInfo\.surface\.kind === 'queue-options'\) return;/);
 assert.match(nero, /LiveFinderPaymentBoundary\?\.blocked/);
 assert.match(nero, /runId: payload\.runId \|\| ''/);
 
