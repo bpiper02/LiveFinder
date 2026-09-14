@@ -24,6 +24,44 @@
     return '';
   }
 
+  function comparableMediaKey(raw) {
+    const url = parseUrl(raw);
+    if (!url) return '';
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const path = url.pathname.replace(/\/+$/, '') || '/';
+
+    if (host === 'youtu.be') {
+      const id = path.split('/').filter(Boolean)[0] || '';
+      if (id) return `youtube:video:${id.toLowerCase()}`;
+    }
+    if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+      const watchId = url.searchParams.get('v');
+      if (/^\/watch\/?$/i.test(path) && watchId) return `youtube:video:${watchId.toLowerCase()}`;
+      const direct = path.match(/^\/(?:shorts|embed|live)\/([^/]+)/i);
+      if (direct?.[1]) return `youtube:video:${direct[1].toLowerCase()}`;
+    }
+    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+      const video = path.match(/^\/@[^/]+\/video\/(\d+)/i);
+      if (video?.[1]) return `tiktok:video:${video[1]}`;
+    }
+
+    const copy = new URL(url.toString());
+    copy.hash = '';
+    for (const key of ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','si','feature','fbclid','gclid']) copy.searchParams.delete(key);
+    const params = [...copy.searchParams.entries()].sort(([a],[b]) => a.localeCompare(b));
+    copy.search = '';
+    for (const [key, value] of params) copy.searchParams.append(key, value);
+    copy.hostname = host;
+    copy.pathname = path;
+    return `${copy.hostname}${copy.pathname}${copy.search}`.toLowerCase();
+  }
+
+  function isExcludedReviewUrl(raw, excludeUrls = []) {
+    const key = comparableMediaKey(raw);
+    if (!key) return false;
+    return (Array.isArray(excludeUrls) ? excludeUrls : []).some(value => comparableMediaKey(value) === key);
+  }
+
   function inferredValues(raw, hint = '') {
     const value = cleanRaw(raw);
     if (!value) return [];
@@ -101,11 +139,13 @@
 
   function bestReviewTarget(values, options = {}) {
     const candidates = [];
+    const excludeUrls = Array.isArray(options.excludeUrls) ? options.excludeUrls : [];
     for (const value of values || []) {
       const raw = typeof value === 'string' ? value : value?.value;
       const hint = typeof value === 'object' ? value?.hint : '';
       const label = typeof value === 'object' ? value?.label : '';
       for (const inferred of inferredValues(raw, hint)) {
+        if (isExcludedReviewUrl(inferred, excludeUrls)) continue;
         const candidate = normalizeReviewTarget(inferred, { isLive: options.isLive, hint, label });
         if (candidate) candidates.push(candidate);
       }
@@ -117,7 +157,15 @@
     return best;
   }
 
-  const api = { cleanRaw, platformFor, inferredValues, normalizeReviewTarget, bestReviewTarget };
+  const api = {
+    cleanRaw,
+    platformFor,
+    comparableMediaKey,
+    isExcludedReviewUrl,
+    inferredValues,
+    normalizeReviewTarget,
+    bestReviewTarget
+  };
   globalThis.LiveFinderReviewLinks = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
