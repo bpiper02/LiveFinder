@@ -76,9 +76,10 @@
 
   async function songUrlsToExclude() {
     const urls = [];
-    const [libraryResult, pendingResult] = await Promise.allSettled([
+    const [libraryResult, pendingResult, statusResult] = await Promise.allSettled([
       chrome.runtime.sendMessage({ type: 'GET_SONG_LIBRARY' }),
-      chrome.runtime.sendMessage({ type: 'GET_NERO_SUBMISSION' })
+      chrome.runtime.sendMessage({ type: 'GET_NERO_SUBMISSION' }),
+      chrome.runtime.sendMessage({ type: 'GET_NERO_STATUS' })
     ]);
     if (libraryResult.status === 'fulfilled') {
       for (const song of libraryResult.value?.library?.songs || []) {
@@ -88,6 +89,11 @@
     if (pendingResult.status === 'fulfilled') {
       const songUrl = pendingResult.value?.record?.payload?.song?.songUrl;
       if (songUrl) urls.push(String(songUrl));
+    }
+    if (statusResult.status === 'fulfilled') {
+      for (const value of [statusResult.value?.queue, statusResult.value?.result]) {
+        if (value?.song?.songUrl) urls.push(String(value.song.songUrl));
+      }
     }
     return [...new Set(urls.filter(Boolean))];
   }
