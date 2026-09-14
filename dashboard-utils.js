@@ -1,6 +1,8 @@
 (() => {
   const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
   const ACTIVE_STATUSES = new Set(['automation started', 'queued', 'submitted']);
+  const STATE_KEY = 'nero-router-state-v1';
+  const REVIEW_KEYS = ['streamUrl','streamPlatform','streamConfidence','streamDerived','reviewUrl','reviewPlatform','reviewConfidence'];
   const GENERIC_LABELS = new Set([
     '',
     'nero reviewer',
@@ -83,6 +85,50 @@
     return (Array.isArray(songs) ? songs : []).some(song => comparableMediaKey(song?.songUrl || song) === key);
   }
 
+  function scrubRecordReviewLink(record, songs) {
+    if (!record) return false;
+    if (!isKnownSongLink(record.streamUrl, songs) && !isKnownSongLink(record.reviewUrl, songs)) return false;
+    for (const key of REVIEW_KEYS) delete record[key];
+    return true;
+  }
+
+  function scrubKnownSongReviewLinks(storage = globalThis.localStorage) {
+    if (!storage?.getItem || !storage?.setItem) return 0;
+    let state;
+    try { state = JSON.parse(storage.getItem(STATE_KEY) || '{}'); } catch { return 0; }
+    const songs = Array.isArray(state.songs) ? state.songs : [];
+    let scrubbed = 0;
+    for (const reviewer of Array.isArray(state.reviewers) ? state.reviewers : []) if (scrubRecordReviewLink(reviewer, songs)) scrubbed += 1;
+    for (const submission of Array.isArray(state.submissions) ? state.submissions : []) if (scrubRecordReviewLink(submission, songs)) scrubbed += 1;
+    if (scrubbed) storage.setItem(STATE_KEY, JSON.stringify(state));
+    return scrubbed;
+  }
+
+  function guardRenderedReviewerLinks() {
+    if (typeof document === 'undefined' || typeof localStorage === 'undefined') return;
+    let state;
+    try { state = JSON.parse(localStorage.getItem(STATE_KEY) || '{}'); } catch { return; }
+    const songs = Array.isArray(state.songs) ? state.songs : [];
+    if (!songs.length) return;
+    for (const anchor of document.querySelectorAll('a.poolReviewerLink[href], a.historyReviewer[href]')) {
+      if (!isKnownSongLink(anchor.href, songs)) continue;
+      const poolUrl = anchor.closest('.poolCard')?.querySelector('select[data-pool-url]')?.dataset?.poolUrl || '';
+      if (poolUrl) {
+        try {
+          anchor.href = normalizeNeroUrl(poolUrl);
+          const small = anchor.querySelector('small');
+          if (small) small.textContent = 'Nero ↗';
+          anchor.title = 'Open reviewer on Nero';
+          continue;
+        } catch {}
+      }
+      anchor.removeAttribute('href');
+      anchor.title = 'Reviewer live link hidden because it matched a saved song URL.';
+      const small = anchor.querySelector('small');
+      if (small) small.textContent = 'Reviewer link unavailable';
+    }
+  }
+
   function isActiveSubmission(submission, now = Date.now(), windowMs = ACTIVE_WINDOW_MS) {
     if (!submission) return false;
     const status = String(submission.status || '').trim().toLowerCase();
@@ -138,6 +184,8 @@
     isGenericReviewerLabel,
     comparableMediaKey,
     isKnownSongLink,
+    scrubKnownSongReviewLinks,
+    guardRenderedReviewerLinks,
     isActiveSubmission,
     activeReviewerKeys,
     filterAvailablePool,
@@ -146,5 +194,12 @@
   };
 
   globalThis.LiveFinderDashboard = api;
+  if (typeof localStorage !== 'undefined') scrubKnownSongReviewLinks(localStorage);
+  if (typeof document !== 'undefined' && document.documentElement && typeof MutationObserver !== 'undefined') {
+    const schedule = () => queueMicrotask(guardRenderedReviewerLinks);
+    schedule();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['href'] });
+  }
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
