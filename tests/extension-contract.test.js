@@ -21,7 +21,7 @@ const discoverMain = fs.readFileSync('extension/discover-main.js', 'utf8');
 const background = fs.readFileSync('extension/background.js', 'utf8');
 const dashboardSync = fs.readFileSync('dashboard-sync.js', 'utf8');
 
-assert.equal(manifest.version, '0.8.0');
+assert.equal(manifest.version, '0.8.1');
 assert.ok(manifest.host_permissions.includes('https://auxchord.app/*'));
 assert.ok(manifest.host_permissions.includes('https://www.tunetavern.app/*'));
 
@@ -105,7 +105,13 @@ assert.match(tuneTavernDiscover, /MutationObserver/);
 
 assert.match(reviewerMain, /PROBE_REVIEWER_REACT/);
 assert.match(reviewerEnrich, /GET_NERO_POOL/);
+assert.match(reviewerEnrich, /GET_SONG_LIBRARY/);
+assert.match(reviewerEnrich, /excludeUrls/);
+assert.match(reviewerEnrich, /scrubContaminatedTarget/);
 assert.match(streamEnrich, /PROBE_REACT_CARD/);
+assert.match(streamEnrich, /GET_SONG_LIBRARY/);
+assert.match(streamEnrich, /excludeUrls/);
+assert.match(streamEnrich, /scrubContaminatedTargets/);
 assert.match(discoverMain, /PLATFORM_KEY_RE/);
 
 assert.match(background, /if \(message\.type === 'GET_PAYMENT_POLICY'\)/);
