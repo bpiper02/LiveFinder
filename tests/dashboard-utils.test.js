@@ -5,6 +5,9 @@ const {
   reviewerKey,
   reviewerLabel,
   isGenericReviewerLabel,
+  comparableMediaKey,
+  isKnownSongLink,
+  scrubKnownSongReviewLinks,
   isActiveSubmission,
   filterAvailablePool,
   poolSignature,
@@ -29,6 +32,27 @@ assert.equal(bestReviewerLabel({
   poolDisplayName: 'Inn0tJuly',
   savedLabel: 'Nero reviewer'
 }), 'Inn0tJuly');
+
+assert.equal(comparableMediaKey('https://www.youtube.com/watch?v=SONG123&utm_source=x'), comparableMediaKey('https://youtu.be/SONG123?si=y'));
+assert.equal(isKnownSongLink('https://youtu.be/SONG123', [{ songUrl: 'https://youtube.com/watch?v=SONG123' }]), true);
+assert.equal(isKnownSongLink('https://youtube.com/watch?v=REVIEW999', [{ songUrl: 'https://youtube.com/watch?v=SONG123' }]), false);
+
+const contaminatedState = {
+  songs: [{ id: 'song-1', songUrl: 'https://www.youtube.com/watch?v=SONG123' }],
+  reviewers: [{ neroUrl: 'https://www.nero.fan/reviewer/live', streamUrl: 'https://youtu.be/SONG123?si=abc', streamPlatform: 'YouTube', streamConfidence: 'direct' }],
+  submissions: [{ reviewerUrl: 'https://www.nero.fan/reviewer/live', reviewUrl: 'https://www.youtube.com/watch?v=SONG123&utm_source=x', reviewPlatform: 'YouTube' }]
+};
+const fakeStorage = {
+  value: JSON.stringify(contaminatedState),
+  getItem() { return this.value; },
+  setItem(_key, value) { this.value = value; }
+};
+assert.equal(scrubKnownSongReviewLinks(fakeStorage), 2);
+const scrubbedState = JSON.parse(fakeStorage.value);
+assert.equal(scrubbedState.reviewers[0].streamUrl, undefined);
+assert.equal(scrubbedState.reviewers[0].streamPlatform, undefined);
+assert.equal(scrubbedState.submissions[0].reviewUrl, undefined);
+assert.equal(scrubbedState.submissions[0].reviewPlatform, undefined);
 
 const recent = { reviewerUrl: 'https://www.nero.fan/alpha/live', status: 'submitted', createdAtMs: NOW - HOUR };
 const queued = { reviewerUrl: 'https://www.nero.fan/beta/live', status: 'queued', createdAtMs: NOW - HOUR };
