@@ -1,7 +1,7 @@
 (() => {
   const { parseReviewerUrl } = globalThis.LiveFinderUrl || {};
-  const { bestReviewTarget } = globalThis.LiveFinderReviewLinks || {};
-  if (!parseReviewerUrl || !bestReviewTarget) return;
+  const { bestReviewTarget, isExcludedReviewUrl } = globalThis.LiveFinderReviewLinks || {};
+  if (!parseReviewerUrl || !bestReviewTarget || !isExcludedReviewUrl) return;
 
   const SOURCE_IN = 'livefinder-discover-isolated';
   const SOURCE_OUT = 'livefinder-discover-main';
@@ -128,14 +128,43 @@
     if (done) done(message);
   });
 
-  async function reviewTargetForCard(card) {
+  async function reviewTargetForCard(card, excludeUrls) {
     const live = isLiveCard(card);
     const values = domCandidates(card);
     const reactCandidates = await probeReact(card);
     for (const candidate of reactCandidates) {
       values.push({ value: candidate.value, hint: candidate.hint || 'react', label: '' });
     }
-    return bestReviewTarget(values, { isLive: live });
+    return bestReviewTarget(values, { isLive: live, excludeUrls });
+  }
+
+  async function songUrlsToExclude() {
+    const urls = [];
+    const [libraryResult, pendingResult] = await Promise.allSettled([
+      chrome.runtime.sendMessage({ type: 'GET_SONG_LIBRARY' }),
+      chrome.runtime.sendMessage({ type: 'GET_NERO_SUBMISSION' })
+    ]);
+    if (libraryResult.status === 'fulfilled') {
+      for (const song of libraryResult.value?.library?.songs || []) {
+        if (song?.songUrl) urls.push(String(song.songUrl));
+      }
+    }
+    if (pendingResult.status === 'fulfilled') {
+      const songUrl = pendingResult.value?.record?.payload?.song?.songUrl;
+      if (songUrl) urls.push(String(songUrl));
+    }
+    return [...new Set(urls.filter(Boolean))];
+  }
+
+  function scrubContaminatedTargets(items, excludeUrls) {
+    let changed = false;
+    for (const item of items) {
+      const contaminated = isExcludedReviewUrl(item?.streamUrl, excludeUrls) || isExcludedReviewUrl(item?.reviewUrl, excludeUrls);
+      if (!contaminated) continue;
+      for (const key of ['streamUrl','streamPlatform','streamConfidence','streamDerived','reviewUrl','reviewPlatform','reviewConfidence']) delete item[key];
+      changed = true;
+    }
+    return changed;
   }
 
   async function enrich() {
@@ -145,12 +174,13 @@
     const items = Array.isArray(pool?.items) ? pool.items : [];
     if (!items.length) return;
 
-    let changed = false;
+    const excludeUrls = await songUrlsToExclude();
+    let changed = scrubContaminatedTargets(items, excludeUrls);
     const byHandle = new Map(items.map(item => [String(item.handle || '').toLowerCase(), item]));
     const byName = new Map(items.map(item => [norm(item.displayName), item]));
 
     for (const card of sessionCards()) {
-      const target = await reviewTargetForCard(card);
+      const target = await reviewTargetForCard(card, excludeUrls);
       if (!target) continue;
       const handle = reviewerHandleFromCard(card);
       const item = (handle && byHandle.get(handle)) || byName.get(norm(extractDisplayName(card)));
@@ -172,7 +202,7 @@
         scrapedAt: Number(pool.scrapedAt || Date.now()),
         diagnostics: pool.diagnostics || null
       });
-      console.log('[LiveFinder] Discover direct review links enriched');
+      console.log('[LiveFinder] Discover review links sanitized/enriched');
     } catch {}
   }
 
