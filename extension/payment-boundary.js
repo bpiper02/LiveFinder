@@ -53,6 +53,36 @@
       .sort((a, b) => (priority[b.surface.kind] || 0) - (priority[a.surface.kind] || 0) || a.area - b.area);
   }
 
+  function actionRoot(target) {
+    if (!target) return null;
+
+    // First trust a real semantic workflow boundary. This prevents unrelated prices
+    // elsewhere on the reviewer page from poisoning a neutral Next button.
+    const semantic = target.closest?.('[role="dialog"], [aria-modal="true"], dialog, form');
+    if (semantic && visible(semantic)) {
+      const text = String(semantic.innerText || semantic.textContent || '');
+      if (text && text.length <= 5000) return { el: semantic, text, surface: guard.classifySurfaceText(text) };
+    }
+
+    // Nero sometimes renders modal steps as plain divs. Walk outward from the
+    // clicked control and stop at the first compact interactive container instead
+    // of consulting a monetized container elsewhere on the page.
+    let el = target.parentElement;
+    for (let depth = 0; el && el !== document.body && depth < 8; depth += 1, el = el.parentElement) {
+      if (!visible(el)) continue;
+      const text = String(el.innerText || el.textContent || '');
+      if (!text || text.length > 3200) continue;
+      const controls = [...el.querySelectorAll('button, [role="button"], a, input, textarea, select')].filter(visible);
+      if (!controls.length) continue;
+      const hasField = controls.some(control => /^(INPUT|TEXTAREA|SELECT)$/.test(control.tagName));
+      const hasMultipleActions = controls.filter(control => /^(BUTTON|A)$/.test(control.tagName) || control.getAttribute?.('role') === 'button').length >= 2;
+      if (!hasField && !hasMultipleActions) continue;
+      return { el, text, surface: guard.classifySurfaceText(text) };
+    }
+
+    return null;
+  }
+
   function freeExit(rootInfo) {
     return [...rootInfo.el.querySelectorAll('button, [role="button"], a')]
       .filter(visible)
@@ -140,11 +170,10 @@
     await reportBoundary(rootInfo, payload);
   }
 
-  // Safety backstop: block LiveFinder-style programmatic clicks on genuine paid
-  // boundaries. The known Nero queue-options screen is excluded here because its
-  // existing controller uses a neutral Next transition before selecting the
-  // explicit free "I'll wait" choice. Paid skip buttons remain untouched by that
-  // controller and are separately classified as paid actions.
+  // Safety backstop: explicit paid buttons are always blocked. Neutral workflow
+  // transitions (for example Nero's URL-step "Next") are judged only against the
+  // local dialog/form they belong to, never against an unrelated monetized region
+  // elsewhere on the page.
   document.addEventListener('click', event => {
     if (event.isTrusted) return;
     if (state.blocked) {
@@ -152,17 +181,33 @@
       event.stopImmediatePropagation();
       return;
     }
-    const rootInfo = roots()[0];
-    if (!rootInfo || rootInfo.surface.kind === 'queue-options') return;
+
     const target = event.target instanceof Element ? event.target.closest('button, [role="button"], a') : null;
     if (!target) return;
     const label = target.innerText || target.textContent || target.getAttribute?.('aria-label') || '';
+
+    const labelDecision = guard.actionDecision(label, '').decision;
+    if (labelDecision === 'safe-free') return;
+    if (labelDecision === 'blocked-paid') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      console.warn('[LiveFinder] blocked explicit paid programmatic action:', guard.norm(label));
+      return;
+    }
+
+    const rootInfo = actionRoot(target);
+    if (!rootInfo || !rootInfo.surface.monetized || rootInfo.surface.kind === 'queue-options') return;
+
+    // Unknown monetized text is too noisy to turn an otherwise neutral button into
+    // a hard block. Genuine payment and add-on surfaces remain protected.
+    if (!['payment-required', 'optional-upsell'].includes(rootInfo.surface.kind)) return;
+
     const decision = guard.actionDecision(label, rootInfo.text).decision;
-    if (decision === 'safe-free') return;
-    if (!rootInfo.surface.monetized) return;
+    if (decision === 'safe-free' || decision === 'neutral') return;
+
     event.preventDefault();
     event.stopImmediatePropagation();
-    console.warn('[LiveFinder] blocked programmatic action on monetized surface:', guard.norm(label));
+    console.warn('[LiveFinder] blocked programmatic action on local monetized surface:', guard.norm(label));
   }, true);
 
   inspect();
