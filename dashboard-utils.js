@@ -48,6 +48,41 @@
     return GENERIC_LABELS.has(String(value || '').trim().toLowerCase());
   }
 
+  function comparableMediaKey(input) {
+    try {
+      const parsed = new URL(String(input || '').trim());
+      const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+      const path = parsed.pathname.replace(/\/+$/, '') || '/';
+      if (host === 'youtu.be') {
+        const id = path.split('/').filter(Boolean)[0] || '';
+        if (id) return `youtube:video:${id.toLowerCase()}`;
+      }
+      if (host === 'youtube.com' || host.endsWith('.youtube.com')) {
+        const watchId = parsed.searchParams.get('v');
+        if (/^\/watch\/?$/i.test(path) && watchId) return `youtube:video:${watchId.toLowerCase()}`;
+        const direct = path.match(/^\/(?:shorts|embed|live)\/([^/]+)/i);
+        if (direct?.[1]) return `youtube:video:${direct[1].toLowerCase()}`;
+      }
+      if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+        const video = path.match(/^\/@[^/]+\/video\/(\d+)/i);
+        if (video?.[1]) return `tiktok:video:${video[1]}`;
+      }
+      for (const key of ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','si','feature','fbclid','gclid']) parsed.searchParams.delete(key);
+      const params = [...parsed.searchParams.entries()].sort(([a],[b]) => a.localeCompare(b));
+      parsed.search = '';
+      for (const [key, value] of params) parsed.searchParams.append(key, value);
+      return `${host}${path}${parsed.search}`.toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  function isKnownSongLink(url, songs = []) {
+    const key = comparableMediaKey(url);
+    if (!key) return false;
+    return (Array.isArray(songs) ? songs : []).some(song => comparableMediaKey(song?.songUrl || song) === key);
+  }
+
   function isActiveSubmission(submission, now = Date.now(), windowMs = ACTIVE_WINDOW_MS) {
     if (!submission) return false;
     const status = String(submission.status || '').trim().toLowerCase();
@@ -101,6 +136,8 @@
     reviewerKey,
     reviewerLabel,
     isGenericReviewerLabel,
+    comparableMediaKey,
+    isKnownSongLink,
     isActiveSubmission,
     activeReviewerKeys,
     filterAvailablePool,
