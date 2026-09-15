@@ -19,7 +19,7 @@
   <div class="marquee quoteRail" aria-hidden="true"><div id="musicQuote">Loading a musician quote…</div></div>
 </header>
 
-<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a></nav>
+<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a><a href="#outreach">Radio / DJ Outreach</a></nav>
 <section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">00</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">00</strong></div><div><span>WATCHED</span><strong id="statQueues">00</strong></div></section>
 
 <section id="pool" class="window panel discovery">
@@ -46,8 +46,27 @@
 </section>
 
 <section id="history" class="window panel submissions">
-  <div class="titleBar sectionBar"><strong>QUEUE / HISTORY</strong><button id="clearHistory" class="titleButton dangerButton" type="button">Clear history</button></div>
+  <div class="titleBar sectionBar"><strong>QUEUE / HISTORY</strong><div class="titleActions"><button id="exportHistory" class="titleButton" type="button">Export CSV</button><button id="clearHistory" class="titleButton dangerButton" type="button">Clear history</button></div></div>
   <div class="windowBody"><div class="alertBar"><div class="alertCopy"><strong>QUEUE ALERTS</strong><span id="queueAlertStatus">Connecting to extension…</span><small>Browser alerts at 10, 5, 2, 1 and next/up when Nero exposes your position.</small></div><div class="alertActions"><button id="scanQueuesNow" type="button">Check queues</button><button id="testQueueAlert" type="button">Test alert</button><button id="toggleQueueAlerts" type="button">Alerts on</button></div></div><div class="table" role="region" aria-label="Submission history" tabindex="0"><div class="tr head"><span>Reviewer</span><span>Song</span><span>Status</span><span>Opened</span><span></span></div><div id="submissionRows"></div></div></div>
+</section>
+
+<section id="outreach" class="window panel outreachLibrary">
+  <div class="titleBar sectionBar"><strong>RADIO / DJ OUTREACH</strong></div>
+  <div class="windowBody">
+    <p class="hint">Track radio stations, shows, DJs and curators you plan to reach out to. Nothing here is sent automatically — this is just your local tracker.</p>
+    <form id="outreachForm" class="stack">
+      <div class="fieldGrid">
+        <label><span>Name</span><input id="outreachName" placeholder="KEXP / DJ Example" required></label>
+        <label><span>Type</span><select id="outreachType"><option value="radio station">Radio station</option><option value="radio show">Radio show</option><option value="dj">DJ</option><option value="curator">Curator</option><option value="other">Other</option></select></label>
+      </div>
+      <label><span>Contact / submission URL <em>optional</em></span><input id="outreachUrl" placeholder="https://..."></label>
+      <label><span>Genre / fit note <em>optional</em></span><input id="outreachGenre" placeholder="Indie rock, late-night slot"></label>
+      <label><span>Notes <em>optional</em></span><textarea id="outreachNotes" placeholder="Submission requirements, contact history, etc."></textarea></label>
+      <button class="primaryButton" type="submit">Add outreach target</button>
+    </form>
+    <div class="groove"></div>
+    <div id="outreachTargets" class="cards"></div>
+  </div>
 </section>
 
 <details id="reviewersSetup" class="window panel reviewerLibrary">
@@ -79,6 +98,6 @@
   </div>
 </footer>
 </main>
-<script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="app.js"></script><script src="payment-policy-web.js"></script><script src="pool-tabs.js"></script><script src="provider-launchpad.js"></script>
+<script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="outreach-utils.js"></script><script src="app.js"></script><script src="payment-policy-web.js"></script><script src="pool-tabs.js"></script><script src="provider-launchpad.js"></script>
 </body>
 </html>
