@@ -19,8 +19,8 @@
   <div class="marquee quoteRail" aria-hidden="true"><div id="musicQuote">Loading a musician quote…</div></div>
 </header>
 
-<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Songs</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a><a href="#outreach">Radio / DJ Outreach</a></nav>
-<section class="counterPanel" aria-label="Dashboard summary"><div><span>SONGS</span><strong id="statSongs">00</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">00</strong></div><div><span>WATCHED</span><strong id="statQueues">00</strong></div></section>
+<nav class="quickNav window" aria-label="Primary navigation"><a href="#pool">Reviewer Pool</a><a href="#songsSetup">Artist &amp; Releases</a><a href="#history">Queue / History</a><a href="#reviewersSetup">Reviewer Library</a><a href="#outreach">Radio / DJ Outreach</a></nav>
+<section class="counterPanel" aria-label="Dashboard summary"><div><span>RELEASES</span><strong id="statSongs">00</strong></div><div><span>AVAILABLE</span><strong id="statAvailable">00</strong></div><div><span>WATCHED</span><strong id="statQueues">00</strong></div></section>
 
 <section id="pool" class="window panel discovery">
   <div class="titleBar sectionBar"><strong>REVIEWER POOL</strong><button id="refreshPool" class="titleButton" type="button">Refresh pool</button></div>
@@ -40,9 +40,81 @@
   </div>
 </section>
 
-<section id="songsSetup" class="window panel songLibrary">
-  <div class="titleBar sectionBar"><strong>SONG LIBRARY</strong></div>
-  <div class="windowBody songLibraryBody"><form id="songForm" class="stack"><div class="fieldGrid"><label><span>Artist</span><input id="artist" placeholder="bdotcom" required></label><label><span>Track title</span><input id="title" placeholder="Too Many Questions" required></label></div><label><span>Submission email</span><input id="email" type="email" placeholder="you@example.com" required></label><label><span>Instagram <em>optional</em></span><input id="instagram" placeholder="@artist"></label><label><span>Song link</span><input id="songUrl" placeholder="Spotify / SoundCloud / YouTube / Drive URL" required></label><label><span>Reviewer note <em>optional</em></span><textarea id="note" placeholder="Short note or question"></textarea></label><button class="primaryButton" type="submit">Save song</button></form><div class="groove"></div><div id="songs" class="cards"></div></div>
+<section id="songsSetup" class="window panel songLibrary releaseHub">
+  <div class="titleBar sectionBar"><strong>ARTIST &amp; RELEASES</strong></div>
+  <div class="windowBody releaseHubBody">
+
+    <section class="releaseBlock artistProfileBlock" aria-labelledby="artistProfileHeading">
+      <h2 id="artistProfileHeading" class="blockHeading">Artist profile</h2>
+      <p class="hint">Enter your reusable artist info once. Nothing here is guessed or invented — only what you enter is saved.</p>
+      <div id="artistProfileSummary" class="artistProfileSummary"></div>
+      <details class="window panel reviewerLibrary artistProfileEditor">
+        <summary class="titleBar sectionBar"><strong>EDIT ARTIST PROFILE</strong></summary>
+        <div class="windowBody">
+          <form id="artistProfileForm" class="stack">
+            <h3 class="groupLabel">Core</h3>
+            <div class="fieldGrid">
+              <label><span>Artist / stage name</span><input data-field="artistName" placeholder="bdotcom"></label>
+              <label><span>Contact name</span><input data-field="contactName" placeholder="Your name"></label>
+              <label><span>Contact email</span><input data-field="contactEmail" type="email" placeholder="you@example.com"></label>
+              <label><span>Phone</span><input data-field="phone" placeholder="+1 555 555 5555"></label>
+              <label><span>Instagram</span><input data-field="instagram" placeholder="@artist"></label>
+              <label><span>Website</span><input data-field="website" placeholder="https://..."></label>
+              <label><span>City</span><input data-field="city"></label>
+              <label><span>Region / state</span><input data-field="region"></label>
+              <label><span>Country</span><input data-field="country"></label>
+              <label><span>Postal code</span><input data-field="postalCode"></label>
+              <label><span>Primary genre</span><input data-field="primaryGenre" placeholder="Alt-R&amp;B"></label>
+              <label><span>Secondary genres <em>comma separated</em></span><input data-field="secondaryGenres" placeholder="Neo-soul, Pop"></label>
+            </div>
+            <h3 class="groupLabel">Reusable artist details</h3>
+            <div class="fieldGrid">
+              <label><span>Short bio</span><textarea data-field="shortBio"></textarea></label>
+              <label><span>Long bio</span><textarea data-field="longBio"></textarea></label>
+              <label><span>Name pronunciation</span><input data-field="pronunciation"></label>
+              <label><span>TikTok</span><input data-field="tiktok"></label>
+              <label><span>YouTube</span><input data-field="youtube"></label>
+              <label><span>Spotify artist URL</span><input data-field="spotifyArtistUrl"></label>
+              <label><span>Other social URL</span><input data-field="otherSocialUrl"></label>
+            </div>
+            <h3 class="groupLabel">Optional industry metadata <em>enter only what you know</em></h3>
+            <div class="fieldGrid">
+              <label><span>Legal name <em>optional</em></span><input data-field="legalName"></label>
+              <label><span>Artist type <em>optional</em></span><input data-field="artistType" placeholder="Solo / duo / band"></label>
+              <label><span>Label <em>blank = self-released</em></span><input data-field="label"></label>
+              <label><span>PRO affiliation <em>optional</em></span><input data-field="proAffiliation" placeholder="ASCAP / BMI / SESAC"></label>
+              <label><span>PRO / member ID <em>optional</em></span><input data-field="proMemberId"></label>
+            </div>
+            <button class="primaryButton" type="submit">Save artist profile</button>
+          </form>
+        </div>
+      </details>
+    </section>
+
+    <div class="groove"></div>
+
+    <section class="releaseBlock releasesBlock" aria-labelledby="releasesHeading">
+      <h2 id="releasesHeading" class="blockHeading">Releases</h2>
+      <form id="quickAddReleaseForm" class="stack quickAddRelease">
+        <div class="fieldGrid">
+          <label><span>Track title</span><input id="qaTrackTitle" placeholder="Too Many Questions" required></label>
+          <label><span>Primary genre <em>optional</em></span><input id="qaGenre" placeholder="Alt-R&amp;B"></label>
+        </div>
+        <label><span>Public/private listening URL <em>optional</em></span><input id="qaStreamUrl" placeholder="Spotify / SoundCloud / private link"></label>
+        <button class="primaryButton" type="submit">Add release</button>
+      </form>
+      <div class="groove"></div>
+      <div id="releasesList" class="cards releasesList"></div>
+    </section>
+
+    <div class="groove"></div>
+
+    <section class="releaseBlock releasePacketBlock" aria-labelledby="releasePacketHeading">
+      <h2 id="releasePacketHeading" class="blockHeading">Selected release packet</h2>
+      <div id="releasePacket" class="releasePacket"></div>
+    </section>
+
+  </div>
 </section>
 
 <section id="history" class="window panel submissions">
@@ -98,6 +170,6 @@
   </div>
 </footer>
 </main>
-<script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="outreach-utils.js"></script><script src="app.js"></script><script src="payment-policy-web.js"></script><script src="pool-tabs.js"></script><script src="provider-launchpad.js"></script>
+<script src="music-quotes.js"></script><script src="dashboard-sync.js"></script><script src="dashboard-ledger.js"></script><script src="dashboard-utils.js"></script><script src="outreach-utils.js"></script><script src="release-packet-utils.js"></script><script src="app.js"></script><script src="payment-policy-web.js"></script><script src="pool-tabs.js"></script><script src="provider-launchpad.js"></script>
 </body>
 </html>
