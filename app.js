@@ -25,6 +25,20 @@ const {
 }=globalThis.LiveFinderOutreach||{};
 if(!OUTREACH_STATUSES||!isSafeHttpUrl||!buildOutreachTarget||!loadOutreachTargets||!saveOutreachTargets)throw new Error('LiveFinder outreach helpers failed to load.');
 
+const {
+  normalizeArtistProfile,
+  normalizeRelease,
+  syncLegacySongs,
+  migrateReleaseData,
+  getSelectedRelease,
+  basicReadiness,
+  radioReadiness,
+  readinessSummaryText,
+  quickCopyGroups
+}=globalThis.LiveFinderReleasePacket||{};
+if(!migrateReleaseData||!syncLegacySongs||!quickCopyGroups)throw new Error('LiveFinder release packet helpers failed to load.');
+migrateReleaseData(state);
+
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
 const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
@@ -220,9 +234,163 @@ function flushPendingPoolRender(){
   renderPool();
 }
 
-function renderSongs(){
-  $('songs').innerHTML=state.songs.length?state.songs.map(s=>`
-    <div class="card itemRow"><div class="itemMain"><strong>${esc(s.title)}</strong><span>${esc(s.artist)}</span><small>${esc(s.songUrl)}</small>${s.instagram?`<small>${esc(s.instagram)}</small>`:''}</div><button class="iconButton danger" type="button" data-action="delete-song" data-id="${esc(s.id)}">Delete</button></div>`).join(''):'<p class="empty">No songs saved yet.</p>';
+const MULTILINE_COPY_KEYS=new Set(['shortBio','longBio','lyrics','releaseNotes','shortPitch','longPitch']);
+
+function artistProfileSummaryHtml(a){
+  if(!a.artistName&&!a.contactEmail)return '<p class="empty">No artist profile yet. Open "Edit artist profile" below to set it up once.</p>';
+  const location=[a.city,a.region,a.country].filter(Boolean).join(', ');
+  return `<div class="card artistSummaryCard">
+    <strong>${esc(a.artistName||'Untitled artist')}</strong>
+    <div class="artistSummaryMeta">
+      ${a.contactEmail?`<small>${esc(a.contactEmail)}</small>`:''}
+      ${a.instagram?`<small>${esc(a.instagram)}</small>`:''}
+      ${location?`<small>${esc(location)}</small>`:''}
+      ${a.primaryGenre?`<small>${esc(a.primaryGenre)}</small>`:''}
+    </div>
+  </div>`;
+}
+
+function populateArtistProfileForm(){
+  const form=$('artistProfileForm');
+  if(!form)return;
+  form.querySelectorAll('[data-field]').forEach(el=>{
+    const key=el.dataset.field;
+    el.value=key==='secondaryGenres'?(state.artistProfile.secondaryGenres||[]).join(', '):(state.artistProfile[key]||'');
+  });
+}
+
+function renderArtistProfile(){
+  const summary=$('artistProfileSummary');
+  if(summary)summary.innerHTML=artistProfileSummaryHtml(state.artistProfile);
+}
+
+function releaseReadinessBadge(release){
+  const radio=radioReadiness(state.artistProfile,release);
+  const ratio=radio.total?radio.ready/radio.total:0;
+  const level=ratio>=0.8?'high':ratio>=0.5?'mid':'low';
+  return `<span class="readinessDot ${level}" title="${esc(readinessSummaryText(radio,'Radio packet'))}"></span><span class="readinessText">${radio.ready}/${radio.total} radio-ready</span>`;
+}
+
+function releaseCard(release){
+  const isSelected=release.id===state.currentReleaseId;
+  const artistName=state.artistProfile.artistName||'Untitled artist';
+  return `<div class="card releaseCard${isSelected?' isSelected':''}">
+    <div class="releaseCardMain">
+      <div class="releaseCardTitle"><strong>${esc(artistName)} — ${esc(release.trackTitle||'Untitled track')}</strong>${isSelected?'<span class="savedFlag">SELECTED</span>':''}</div>
+      <div class="releaseMeta">
+        ${release.releaseDate?`<span>${esc(release.releaseDate)}</span>`:''}
+        ${release.primaryGenre?`<span>${esc(release.primaryGenre)}</span>`:''}
+        ${releaseReadinessBadge(release)}
+      </div>
+    </div>
+    <div class="releaseCardActions">
+      <button class="iconButton" type="button" data-action="open-release" data-id="${esc(release.id)}">Open packet</button>
+      <button class="iconButton danger" type="button" data-action="delete-release" data-id="${esc(release.id)}">Delete</button>
+    </div>
+  </div>`;
+}
+
+function renderReleases(){
+  const el=$('releasesList');
+  if(!el)return;
+  el.innerHTML=state.releases.length?state.releases.map(releaseCard).join(''):'<p class="empty">No releases yet. Add one above.</p>';
+}
+
+function selectOptions(options,current){
+  return options.map(([value,label])=>`<option value="${esc(value)}"${value===current?' selected':''}>${esc(label)}</option>`).join('');
+}
+
+const YES_NO_OPTIONS=[['unknown','Unknown'],['yes','Yes'],['no','No']];
+
+function releaseEditFormHtml(r){
+  return `<form id="releaseEditForm" class="stack" data-release-id="${esc(r.id)}">
+    <details open><summary>Identity</summary><div class="fieldGrid">
+      <label><span>Track title</span><input data-field="trackTitle" value="${esc(r.trackTitle)}" required></label>
+      <label><span>Release title</span><input data-field="releaseTitle" value="${esc(r.releaseTitle)}"></label>
+      <label><span>Release type</span><select data-field="releaseType"><option value=""${r.releaseType?'':' selected'}>Not set</option>${selectOptions([['single','Single'],['ep','EP'],['album','Album'],['other','Other']],r.releaseType)}</select></label>
+      <label><span>Featured artists</span><input data-field="featuredArtists" value="${esc(r.featuredArtists)}"></label>
+      <label><span>Primary genre</span><input data-field="primaryGenre" value="${esc(r.primaryGenre)}"></label>
+      <label><span>Subgenre</span><input data-field="subgenre" value="${esc(r.subgenre)}"></label>
+      <label><span>Language</span><input data-field="language" value="${esc(r.language)}"></label>
+      <label><span>Release date</span><input data-field="releaseDate" type="date" value="${esc(r.releaseDate)}"></label>
+      <label><span>Track duration</span><input data-field="trackDuration" placeholder="3:24" value="${esc(r.trackDuration)}"></label>
+      <label><span>Explicit / clean status</span><select data-field="explicitStatus">${selectOptions([['unknown','Unknown'],['clean','Clean'],['explicit','Explicit']],r.explicitStatus)}</select></label>
+    </div></details>
+    <details><summary>Links</summary><div class="fieldGrid">
+      <label><span>Public streaming URL</span><input data-field="publicStreamingUrl" value="${esc(r.publicStreamingUrl)}"></label>
+      <label><span>Private listening URL</span><input data-field="privateListeningUrl" value="${esc(r.privateListeningUrl)}"></label>
+      <label><span>Direct WAV download</span><input data-field="wavDownloadUrl" value="${esc(r.wavDownloadUrl)}"></label>
+      <label><span>Direct MP3 download</span><input data-field="mp3DownloadUrl" value="${esc(r.mp3DownloadUrl)}"></label>
+      <label><span>EPK / one-sheet URL</span><input data-field="epkUrl" value="${esc(r.epkUrl)}"></label>
+    </div></details>
+    <details><summary>Copy / pitch</summary><div class="stack">
+      <label><span>One-line description</span><input data-field="oneLineDescription" value="${esc(r.oneLineDescription)}"></label>
+      <label><span>Short pitch</span><textarea data-field="shortPitch">${esc(r.shortPitch)}</textarea></label>
+      <label><span>Longer pitch</span><textarea data-field="longPitch">${esc(r.longPitch)}</textarea></label>
+      <label><span>Lyrics</span><textarea data-field="lyrics">${esc(r.lyrics)}</textarea></label>
+      <label><span>Release notes</span><textarea data-field="releaseNotes">${esc(r.releaseNotes)}</textarea></label>
+    </div></details>
+    <details><summary>Credits</summary><div class="fieldGrid">
+      <label><span>Songwriters / composers</span><input data-field="songwriters" value="${esc(r.songwriters)}"></label>
+      <label><span>Producer(s)</span><input data-field="producers" value="${esc(r.producers)}"></label>
+      <label><span>Label <em>blank = self-released</em></span><input data-field="label" value="${esc(r.label)}"></label>
+      <label><span>Publisher</span><input data-field="publisher" value="${esc(r.publisher)}"></label>
+      <label><span>Catalogue number</span><input data-field="catalogueNumber" value="${esc(r.catalogueNumber)}"></label>
+      <label><span>ISRC</span><input data-field="isrc" value="${esc(r.isrc)}"></label>
+    </div></details>
+    <details><summary>Radio / rights</summary><div class="fieldGrid">
+      <label><span>Clean version available</span><select data-field="cleanVersionAvailable">${selectOptions(YES_NO_OPTIONS,r.cleanVersionAvailable)}</select></label>
+      <label><span>Instrumental available</span><select data-field="instrumentalAvailable">${selectOptions(YES_NO_OPTIONS,r.instrumentalAvailable)}</select></label>
+      <label><span>Mixed/mastered</span><select data-field="mixedMastered">${selectOptions(YES_NO_OPTIONS,r.mixedMastered)}</select></label>
+      <label><span>Controls/owns recording rights</span><select data-field="ownsRecordingRights">${selectOptions(YES_NO_OPTIONS,r.ownsRecordingRights)}</select></label>
+      <label><span>Controls/owns composition rights</span><select data-field="ownsCompositionRights">${selectOptions(YES_NO_OPTIONS,r.ownsCompositionRights)}</select></label>
+      <label><span>Samples cleared</span><select data-field="samplesCleared">${selectOptions([['unknown','Unknown'],['yes','Yes'],['no','No'],['not_applicable','N/A']],r.samplesCleared)}</select></label>
+    </div></details>
+    <details><summary>Assets / promo</summary><div class="fieldGrid">
+      <label><span>Artwork URL</span><input data-field="artworkUrl" value="${esc(r.artworkUrl)}"></label>
+      <label><span>Press photo URL</span><input data-field="pressPhotoUrl" value="${esc(r.pressPhotoUrl)}"></label>
+      <label><span>Upcoming shows / tour note</span><input data-field="upcomingShows" value="${esc(r.upcomingShows)}"></label>
+      <label><span>Interview availability</span><input data-field="interviewAvailability" value="${esc(r.interviewAvailability)}"></label>
+      <label><span>Press / highlight note</span><input data-field="pressHighlight" value="${esc(r.pressHighlight)}"></label>
+    </div></details>
+    <button class="primaryButton" type="submit">Save release</button>
+  </form>`;
+}
+
+function copyRowHtml(f){
+  return `<div class="copyRow${MULTILINE_COPY_KEYS.has(f.key)?' multiline':''}">
+    <span class="copyLabel">${esc(f.label)}</span>
+    <span class="copyValue" title="${esc(f.value)}">${esc(f.value)}</span>
+    <button type="button" class="iconButton copyButton" data-copy-btn data-copy-value="${esc(f.value)}">COPY</button>
+  </div>`;
+}
+
+function renderReleasePacket(){
+  const container=$('releasePacket');
+  if(!container)return;
+  const release=getSelectedRelease(state);
+  if(!release){
+    container.innerHTML='<p class="empty">No release selected yet. Add a release above, then choose Open packet.</p>';
+    return;
+  }
+  const basic=basicReadiness(state.artistProfile,release);
+  const radio=radioReadiness(state.artistProfile,release);
+  const groups=quickCopyGroups(state.artistProfile,release);
+
+  const readinessHtml=`<div class="readinessBar">
+    <div class="readinessChip"><strong>${basic.ready}/${basic.total}</strong><span>${esc(readinessSummaryText(basic,'Basic submission'))}</span></div>
+    <div class="readinessChip"><strong>${radio.ready}/${radio.total}</strong><span>${esc(readinessSummaryText(radio,'Radio packet'))}</span></div>
+  </div>
+  ${radio.missing.length?`<details class="missingFields"><summary>Missing common radio fields (${radio.missing.length})</summary><ul>${radio.missing.map(m=>`<li>${esc(m.label)}</li>`).join('')}</ul></details>`:'<p class="hint">All common radio fields are filled in. This is not a guarantee every station will accept the packet.</p>'}`;
+
+  const copyHtml=groups.length?groups.map(g=>`<details class="packetGroup" open><summary>${esc(g.group)}</summary><div class="copyRows">${g.fields.map(copyRowHtml).join('')}</div></details>`).join(''):'<p class="empty">Fill in the release below to unlock quick copy.</p>';
+
+  container.innerHTML=`
+    <div class="packetHeader"><strong>${esc(state.artistProfile.artistName||'Untitled artist')}</strong> — <span>${esc(release.trackTitle||'Untitled track')}</span></div>
+    ${readinessHtml}
+    <div class="packetCopy">${copyHtml}</div>
+    <details class="window panel reviewerLibrary packetEdit"><summary class="titleBar sectionBar"><strong>EDIT THIS RELEASE</strong></summary><div class="windowBody">${releaseEditFormHtml(release)}</div></details>
+  `;
 }
 
 function reviewerLink(url,stored,label){
@@ -291,8 +459,21 @@ function renderOutreach(){
   el.innerHTML=outreachTargets.length?outreachTargets.map(outreachCard).join(''):'<p class="empty">No outreach targets yet.</p>';
 }
 
+function commitReleaseChange(){
+  syncLegacySongs(state);
+  save();
+  renderArtistProfile();
+  renderReleases();
+  renderReleasePacket();
+  renderReviewers();
+  renderPastReviewers();
+  renderPool(true);
+}
+
 function render(){
-  renderSongs();
+  renderArtistProfile();
+  renderReleases();
+  renderReleasePacket();
   renderReviewers();
   renderPastReviewers();
   renderHistory();
@@ -308,7 +489,15 @@ function handleAction(action,id){
     renderOutreach();
     return;
   }
-  if(action==='delete-song')state.songs=state.songs.filter(x=>x.id!==id);
+  if(action==='open-release'){
+    if(state.releases.some(r=>r.id===id))state.currentReleaseId=id;
+  }
+  if(action==='delete-release'){
+    if(!confirm('Delete this release? This cannot be undone.'))return;
+    state.releases=state.releases.filter(x=>x.id!==id);
+    if(state.currentReleaseId===id)state.currentReleaseId=state.releases[0]?.id||null;
+    syncLegacySongs(state);
+  }
   if(action==='delete-reviewer')state.reviewers=state.reviewers.filter(x=>x.id!==id);
   if(action==='delete-submission')state.submissions=state.submissions.filter(x=>x.id!==id);
   save();render();
@@ -337,17 +526,37 @@ function saveReviewerExplicit(url,label='',stored={}){
   return true;
 }
 
-$('songForm').onsubmit=e=>{
+$('artistProfileForm').onsubmit=e=>{
   e.preventDefault();
-  state.songs.push({id:uid(),artist:$('artist').value.trim(),title:$('title').value.trim(),email:$('email').value.trim(),instagram:$('instagram').value.trim(),songUrl:$('songUrl').value.trim(),note:$('note').value.trim()});
-  save();
-  const keepEmail=$('email').value;
-  const keepInstagram=$('instagram').value;
-  $('songForm').reset();
-  $('email').value=keepEmail;
-  $('instagram').value=keepInstagram;
-  renderSongs();renderReviewers();renderPastReviewers();renderPool(true);
+  const updates={};
+  e.target.querySelectorAll('[data-field]').forEach(el=>{updates[el.dataset.field]=el.value;});
+  state.artistProfile=normalizeArtistProfile({...state.artistProfile,...updates});
+  commitReleaseChange();
+  populateArtistProfileForm();
 };
+
+$('quickAddReleaseForm').onsubmit=e=>{
+  e.preventDefault();
+  const trackTitle=$('qaTrackTitle').value.trim();
+  if(!trackTitle)return;
+  const release=normalizeRelease({id:uid(),trackTitle,primaryGenre:$('qaGenre').value.trim(),publicStreamingUrl:$('qaStreamUrl').value.trim()});
+  state.releases.push(release);
+  state.currentReleaseId=release.id;
+  commitReleaseChange();
+  $('quickAddReleaseForm').reset();
+};
+
+document.addEventListener('submit',event=>{
+  const form=event.target;
+  if(form.id!=='releaseEditForm')return;
+  event.preventDefault();
+  const release=state.releases.find(r=>r.id===form.dataset.releaseId);
+  if(!release)return;
+  const updates={};
+  form.querySelectorAll('[data-field]').forEach(el=>{updates[el.dataset.field]=el.value;});
+  Object.assign(release,normalizeRelease({...release,...updates,id:release.id,createdAtMs:release.createdAtMs,updatedAtMs:Date.now()}));
+  commitReleaseChange();
+});
 
 $('reviewerForm').onsubmit=e=>{
   e.preventDefault();
@@ -594,7 +803,38 @@ document.addEventListener('change',event=>{
   }
 });
 
+async function copyToClipboard(value){
+  if(navigator.clipboard?.writeText){
+    try{await navigator.clipboard.writeText(value);return true;}catch{}
+  }
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=value;
+    ta.style.position='fixed';
+    ta.style.opacity='0';
+    document.body.appendChild(ta);
+    ta.focus();ta.select();
+    const ok=document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }catch{return false;}
+}
+
+function flashCopied(btn){
+  clearTimeout(btn._copyTimer);
+  btn.textContent='COPIED';
+  btn.classList.add('copied');
+  btn._copyTimer=setTimeout(()=>{btn.textContent='COPY';btn.classList.remove('copied');},1200);
+}
+
 document.addEventListener('click',event=>{
+  const copyBtn=event.target instanceof Element?event.target.closest('[data-copy-btn]'):null;
+  if(copyBtn){
+    const value=copyBtn.dataset.copyValue||'';
+    if(!value)return;
+    copyToClipboard(value).then(ok=>{if(ok)flashCopied(copyBtn);});
+    return;
+  }
   const saveBtn=event.target instanceof Element?event.target.closest('[data-save-reviewer-url]'):null;
   if(saveBtn){
     const history=state.submissions.find(s=>reviewerKey(s.reviewerUrl)===reviewerKey(saveBtn.dataset.saveReviewerUrl));
@@ -675,4 +915,5 @@ setInterval(()=>{
 window.postMessage({source:'livefinder-web',type:'PING_BRIDGE'},'*');
 
 migrateState();
+populateArtistProfileForm();
 render();

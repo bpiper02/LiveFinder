@@ -1,0 +1,56 @@
+.releaseHubBody{display:flex;flex-direction:column;gap:2px}
+.releaseBlock{min-width:0}
+.blockHeading{margin:0 0 6px;font:900 12px/1.3 "Courier New",monospace;text-transform:uppercase;letter-spacing:.03em}
+.groupLabel{margin:14px 0 6px;font:900 11px/1.3 "Courier New",monospace;text-transform:uppercase;color:#000080}
+.groupLabel:first-child{margin-top:0}
+.groupLabel em{font:400 10px "Courier New",monospace;color:#808080;text-transform:none;margin-left:6px}
+.artistProfileSummary{margin-bottom:10px}
+.artistSummaryCard{display:flex;flex-direction:column;gap:6px}
+.artistSummaryMeta{display:flex;flex-wrap:wrap;gap:10px}
+.artistSummaryMeta small{font:11px/1.3 "Courier New",monospace;color:#404040}
+.artistProfileEditor{margin-top:4px}
+.quickAddRelease{max-width:780px;margin-bottom:4px}
+.releasesList{margin-top:4px}
+.releaseCard{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.releaseCard.isSelected{outline:2px dotted #000080;outline-offset:2px}
+.releaseCardMain{display:flex;flex-direction:column;gap:4px;min-width:0}
+.releaseCardTitle{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.releaseCardTitle strong{overflow:hidden;text-overflow:ellipsis}
+.releaseMeta{display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.releaseMeta span{font:10px/1.3 "Courier New",monospace;color:#404040}
+.releaseCardActions{display:flex;gap:6px;flex-wrap:wrap}
+.readinessDot{display:inline-block;width:9px;height:9px;border:1px solid #000;vertical-align:middle;margin-right:4px}
+.readinessDot.high{background:#00aa00}
+.readinessDot.mid{background:#ffff00}
+.readinessDot.low{background:#ff0000}
+.readinessText{font:10px/1.3 "Courier New",monospace;color:#404040}
+.releasePacket{margin-top:6px}
+.packetHeader{margin-bottom:8px;font-size:14px}
+.readinessBar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.readinessChip{display:flex;flex-direction:column;gap:2px;padding:7px 10px;background:#000;color:#00ff00;border:2px solid;border-color:#808080 #fff #fff #808080;font-family:"Courier New",monospace;min-width:170px}
+.readinessChip strong{font-size:16px}
+.readinessChip span{font-size:9px;color:#fff;text-transform:uppercase}
+.missingFields{margin:0 0 10px;padding:7px 9px;background:#ffffcc;border:2px solid;border-color:#808080 #fff #fff #808080;font-size:11px}
+.missingFields summary{cursor:pointer;font-weight:800}
+.missingFields ul{margin:7px 0 0;padding-left:18px}
+.missingFields li{margin:2px 0}
+.packetCopy{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.packetGroup{background:#c0c0c0;border:2px solid;border-color:#fff #808080 #808080 #fff;padding:0}
+.packetGroup>summary{cursor:pointer;list-style:none;padding:7px 9px;background:#000080;color:#fff;font:900 11px/1.3 "Courier New",monospace;text-transform:uppercase}
+.packetGroup>summary::-webkit-details-marker{display:none}
+.copyRows{display:flex;flex-direction:column;background:#fff}
+.copyRow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 9px;border-bottom:1px solid #c0c0c0}
+.copyRow:last-child{border-bottom:0}
+.copyLabel{flex:0 0 150px;font:700 10px/1.3 "Courier New",monospace;text-transform:uppercase;color:#404040}
+.copyValue{flex:1 1 220px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;word-break:break-word}
+.copyRow.multiline{align-items:flex-start}
+.copyRow.multiline .copyValue{flex-basis:100%;order:3;white-space:pre-wrap;max-height:120px;overflow:auto;background:#f4f4f4;border:1px solid #c0c0c0;padding:6px;font-size:12px}
+.copyButton{flex:0 0 auto;min-width:60px;font-size:10px}
+.copyButton.copied{background:#006600;color:#fff;border-color:#00ff00 #003300 #003300 #00ff00}
+.packetEdit{margin-top:4px}
+.packetEdit details{margin:9px 0;background:#e8e8e8;border:2px solid;border-color:#808080 #fff #fff #808080}
+.packetEdit details>summary{cursor:pointer;padding:7px 9px;font:800 11px/1.3 "Courier New",monospace;text-transform:uppercase}
+.packetEdit details>.fieldGrid,.packetEdit details>.stack{padding:0 9px 9px}
+@media(max-width:900px){.readinessChip{min-width:0;flex:1 1 45%}}
+@media(max-width:680px){.readinessBar{flex-direction:column}.readinessChip{width:100%}}
+@media(max-width:480px){.copyRow{flex-direction:column;align-items:stretch}.copyLabel{flex:none}.copyValue{flex:none;white-space:normal;overflow:visible;text-overflow:clip}.copyRow.multiline .copyValue{max-height:150px}.copyButton{width:100%}.releaseCardActions{width:100%}.releaseCardActions button{flex:1 1 auto}}
