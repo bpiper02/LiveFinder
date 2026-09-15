@@ -340,8 +340,10 @@
       return;
     }
 
-    const requiredUnknown = [...root.querySelectorAll('input[required], textarea[required]')]
-      .filter(el => visible(el) && !el.disabled && el.type !== 'checkbox' && !known.has(el) && !String(el.value || '').trim());
+    const requiredUnknown = globalThis.LiveFinderAutofill?.unfilledUnknownRequiredControls
+      ? globalThis.LiveFinderAutofill.unfilledUnknownRequiredControls(root, known)
+      : [...root.querySelectorAll('input[required], textarea[required], select[required]')]
+          .filter(el => visible(el) && !el.disabled && el.type !== 'checkbox' && !known.has(el) && !String(el.value || '').trim());
     if (requiredUnknown.length) {
       showBadge('LiveFinder stopped: reviewer has an extra required field.', 'error');
       return;
@@ -378,9 +380,12 @@
   function handleWait(root) {
     enteredWorkflow = true;
 
+    const paymentGuard = globalThis.LiveFinderPaymentGuard;
+    const surfaceText = root.innerText || root.textContent || '';
+
     const waitButton = clickableElements(root).find(el => {
-      const text = norm(el.innerText || el.textContent);
-      return text.includes("i'll wait") && !text.includes('skip') && !text.includes('$');
+      const label = el.innerText || el.textContent || el.getAttribute?.('aria-label') || '';
+      return paymentGuard?.isSafeQueueWaitAction?.(label, surfaceText) === true;
     });
 
     if (!waitButton) {

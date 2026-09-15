@@ -56,6 +56,12 @@
     return HARD_PAID_RE.test(label) || hasMoney(label) || /\bskip\b/i.test(label);
   }
 
+  function isSafeQueueWaitAction(label, surfaceText = '') {
+    const normalized = norm(label);
+    if (!/\bwait\b/.test(normalized)) return false;
+    return actionDecision(label, surfaceText).decision === 'safe-free';
+  }
+
   function classifySurfaceText(value) {
     const text = norm(value);
     if (!text) return { kind: 'none', monetized: false, reason: '' };
@@ -100,6 +106,7 @@
     hasMoney,
     isVerifiedFreeLabel,
     isPaidActionLabel,
+    isSafeQueueWaitAction,
     classifySurfaceText,
     extractPrices,
     actionDecision,

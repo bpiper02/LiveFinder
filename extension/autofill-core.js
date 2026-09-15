@@ -191,6 +191,18 @@
     return true;
   }
 
+  function unfilledUnknownRequiredControls(root = document, knownControls = new Set()) {
+    const known = knownControls instanceof Set
+      ? knownControls
+      : new Set(knownControls || []);
+
+    return [...root.querySelectorAll('input[required], textarea[required], select[required]')]
+      .filter(el => visible(el) && !el.disabled)
+      .filter(el => !['checkbox', 'radio', 'file', 'submit', 'button', 'reset'].includes(normalize(el.type)))
+      .filter(el => !known.has(el))
+      .filter(el => !String(el.value ?? '').trim());
+  }
+
   function fillCanonical(data, root = document) {
     const requested = Object.entries(data || {}).filter(([key, value]) => FIELD_DEFS[key] && String(value ?? '').trim());
     const { matches } = matchFields(root, requested.map(([key]) => key));
@@ -210,7 +222,15 @@
     return report;
   }
 
-  const api = { FIELD_DEFS, normalize, scoreFieldFromText, describeControl, matchFields, fillCanonical };
+  const api = {
+    FIELD_DEFS,
+    normalize,
+    scoreFieldFromText,
+    describeControl,
+    matchFields,
+    unfilledUnknownRequiredControls,
+    fillCanonical
+  };
   globalThis.LiveFinderAutofill = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();
