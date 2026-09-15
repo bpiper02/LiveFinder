@@ -11,9 +11,19 @@ const {
   reviewerLabel,
   bestReviewerLabel,
   filterAvailablePool,
-  poolSignature
+  poolSignature,
+  submissionsToCsv
 }=globalThis.LiveFinderDashboard||{};
-if(!normalizeNeroUrl||!reviewerKey||!filterAvailablePool)throw new Error('LiveFinder dashboard helpers failed to load.');
+if(!normalizeNeroUrl||!reviewerKey||!filterAvailablePool||!submissionsToCsv)throw new Error('LiveFinder dashboard helpers failed to load.');
+
+const {
+  OUTREACH_STATUSES,
+  isSafeHttpUrl,
+  buildOutreachTarget,
+  loadOutreachTargets,
+  saveOutreachTargets
+}=globalThis.LiveFinderOutreach||{};
+if(!OUTREACH_STATUSES||!isSafeHttpUrl||!buildOutreachTarget||!loadOutreachTargets||!saveOutreachTargets)throw new Error('LiveFinder outreach helpers failed to load.');
 
 const $=id=>document.getElementById(id);
 const uid=()=>crypto.randomUUID();
@@ -31,6 +41,8 @@ let queueWatches=[];
 let queueAlertsEnabled=true;
 let poolInteractionLocked=false;
 let pendingPoolRender=false;
+let outreachTargets=loadOutreachTargets(localStorage);
+const saveOutreach=()=>saveOutreachTargets(outreachTargets,localStorage);
 
 function poolItemForReviewer(url){
   const key=reviewerKey(url);
@@ -258,6 +270,27 @@ function renderHistory(){
   }).join(''):'<p class="empty">Nothing submitted yet.</p>';
 }
 
+function outreachCard(t){
+  const link=isSafeHttpUrl(t.url)?`<a class="outreachLink" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.url)}</a>`:(t.url?`<small>${esc(t.url)}</small>`:'');
+  const statusOptions=OUTREACH_STATUSES.map(s=>`<option value="${esc(s)}"${s===t.status?' selected':''}>${esc(s)}</option>`).join('');
+  return `<div class="card outreachCard">
+    <div class="outreachTop">
+      <div class="outreachMain"><strong>${esc(t.name)}</strong><span class="statusChip">${esc(t.type)}</span></div>
+      <select data-outreach-status="${esc(t.id)}" aria-label="Status for ${esc(t.name)}">${statusOptions}</select>
+    </div>
+    ${link}
+    ${t.genre?`<small>${esc(t.genre)}</small>`:''}
+    ${t.notes?`<p class="outreachNotes">${esc(t.notes)}</p>`:''}
+    <button class="iconButton danger" type="button" data-action="delete-outreach" data-id="${esc(t.id)}">Delete</button>
+  </div>`;
+}
+
+function renderOutreach(){
+  const el=$('outreachTargets');
+  if(!el)return;
+  el.innerHTML=outreachTargets.length?outreachTargets.map(outreachCard).join(''):'<p class="empty">No outreach targets yet.</p>';
+}
+
 function render(){
   renderSongs();
   renderReviewers();
@@ -265,9 +298,16 @@ function render(){
   renderHistory();
   renderPool(true);
   renderQueueControls();
+  renderOutreach();
 }
 
 function handleAction(action,id){
+  if(action==='delete-outreach'){
+    outreachTargets=outreachTargets.filter(x=>x.id!==id);
+    saveOutreach();
+    renderOutreach();
+    return;
+  }
   if(action==='delete-song')state.songs=state.songs.filter(x=>x.id!==id);
   if(action==='delete-reviewer')state.reviewers=state.reviewers.filter(x=>x.id!==id);
   if(action==='delete-submission')state.submissions=state.submissions.filter(x=>x.id!==id);
@@ -317,6 +357,41 @@ $('reviewerForm').onsubmit=e=>{
   if(existing){alert('That reviewer is already saved.');return;}
   saveReviewerExplicit(url,reviewerLabel(url));
   $('reviewerForm').reset();
+};
+
+$('outreachForm').onsubmit=e=>{
+  e.preventDefault();
+  let target;
+  try{
+    target=buildOutreachTarget({
+      name:$('outreachName').value,
+      type:$('outreachType').value,
+      url:$('outreachUrl').value,
+      genre:$('outreachGenre').value,
+      notes:$('outreachNotes').value
+    });
+  }catch{
+    alert('Enter a name for the outreach target.');
+    return;
+  }
+  outreachTargets.push(target);
+  saveOutreach();
+  $('outreachForm').reset();
+  renderOutreach();
+};
+
+$('exportHistory').onclick=()=>{
+  if(!state.submissions.length)return;
+  const csv=submissionsToCsv(state.submissions);
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`livefinder-submission-history-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 };
 
 $('clearHistory').onclick=()=>{
@@ -507,7 +582,16 @@ document.addEventListener('change',event=>{
     return;
   }
   const reviewerSelect=event.target instanceof Element?event.target.closest('select[data-reviewer]'):null;
-  if(reviewerSelect)submitToReviewer(reviewerSelect.dataset.reviewer,reviewerSelect.value);
+  if(reviewerSelect){submitToReviewer(reviewerSelect.dataset.reviewer,reviewerSelect.value);return;}
+  const outreachStatusSelect=event.target instanceof Element?event.target.closest('select[data-outreach-status]'):null;
+  if(outreachStatusSelect){
+    const target=outreachTargets.find(t=>t.id===outreachStatusSelect.dataset.outreachStatus);
+    if(target&&OUTREACH_STATUSES.includes(outreachStatusSelect.value)){
+      target.status=outreachStatusSelect.value;
+      saveOutreach();
+      renderOutreach();
+    }
+  }
 });
 
 document.addEventListener('click',event=>{

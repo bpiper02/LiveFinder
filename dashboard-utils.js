@@ -176,6 +176,24 @@
     return reviewerLabel(url);
   }
 
+  const CSV_HEADER = ['Reviewer', 'Song', 'Status', 'Queue Position', 'Timestamp'];
+
+  function csvEscapeField(value) {
+    const str = String(value ?? '');
+    return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  }
+
+  function submissionsToCsv(submissions) {
+    const rows = (Array.isArray(submissions) ? submissions : []).map(s => [
+      s?.reviewer || '',
+      s?.song || '',
+      s?.status || '',
+      Number.isFinite(s?.queueAhead) ? s.queueAhead : '',
+      s?.createdAt || ''
+    ]);
+    return [CSV_HEADER, ...rows].map(row => row.map(csvEscapeField).join(',')).join('\r\n');
+  }
+
   const api = {
     ACTIVE_WINDOW_MS,
     normalizeNeroUrl,
@@ -190,7 +208,9 @@
     activeReviewerKeys,
     filterAvailablePool,
     poolSignature,
-    bestReviewerLabel
+    bestReviewerLabel,
+    csvEscapeField,
+    submissionsToCsv
   };
 
   globalThis.LiveFinderDashboard = api;
