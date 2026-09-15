@@ -46,7 +46,7 @@ const {
   ]);
 }
 
-// Ambiguous per-song artist data: never invented, most common value wins deterministically.
+// The most common legacy value seeds the profile; conflicting per-song values survive.
 {
   const state = {
     songs: [
@@ -58,6 +58,25 @@ const {
   migrateReleaseData(state);
   assert.equal(state.artistProfile.artistName, 'Main Artist', 'most frequent legacy artist value seeds the profile');
   assert.equal(state.artistProfile.contactEmail, 'main@x.com');
+}
+
+// Conflicting identities (including blank contacts) survive migration, reload and edits.
+{
+  const songs = [
+    { id: 'a', artist: 'Artist A', email: 'a@example.com', instagram: '@a', title: 'A', songUrl: '', note: '' },
+    { id: 'b', artist: 'Artist B', email: 'b@example.com', instagram: '@b', title: 'B', songUrl: '', note: '' },
+    { id: 'c', artist: 'Artist A', email: '', instagram: '', title: 'C', songUrl: '', note: '' }
+  ];
+  for (const artistProfile of [undefined, { artistName: 'Existing', contactEmail: 'existing@example.com', instagram: '@existing' }]) {
+    let state = { songs: structuredClone(songs), artistProfile };
+    migrateReleaseData(state);
+    assert.deepEqual(state.songs, songs);
+    state = JSON.parse(JSON.stringify(state));
+    migrateReleaseData(state);
+    state.releases = state.releases.map(normalizeRelease);
+    syncLegacySongs(state);
+    assert.deepEqual(state.songs, songs, 'reload and release edits must preserve each legacy identity');
+  }
 }
 
 // Re-running migration (e.g. on every page load) must not duplicate releases or invent data.
@@ -103,6 +122,26 @@ const {
   const adaptedPrivate = releaseToLegacySong(artist, privateOnly);
   assert.equal(adaptedPrivate.songUrl, 'https://drive.com/x');
   assert.equal(adaptedPrivate.note, 'from old song');
+}
+
+// Incomplete overrides must not erase known profile values or invent missing ones.
+{
+  const profile = { artistName: 'Stored Artist', contactEmail: 'stored@example.com', instagram: '@stored' };
+  const identity = song => [song.artist, song.email, song.instagram];
+  for (const value of [null, undefined]) {
+    const legacyArtistOverrides = Object.fromEntries(Object.keys(profile).map(key => [key, value]));
+    assert.deepEqual(identity(releaseToLegacySong(profile, { legacyArtistOverrides })), Object.values(profile));
+  }
+  assert.deepEqual(identity(releaseToLegacySong(profile, { legacyArtistOverrides: {} })), Object.values(profile));
+  assert.deepEqual(identity(releaseToLegacySong(profile, {
+    legacyArtistOverrides: { artistName: 'Release Artist', contactEmail: '', instagram: '' }
+  })), ['Release Artist', '', '']);
+  for (const artist of [undefined, null, {}]) {
+    assert.deepEqual(identity(releaseToLegacySong(artist, {
+      legacyArtistOverrides: { artistName: 'Known Artist' }
+    })), ['Known Artist', '', '']);
+    assert.deepEqual(identity(releaseToLegacySong(artist, {})), ['', '', '']);
+  }
 }
 
 // ---- Release persistence / selected release persistence ----
@@ -178,6 +217,16 @@ const {
 
 // ---- Quick copy: exact payload, blanks omitted ----
 
+// Nullish and absent values are omitted, never stringified into copyable text.
+{
+  for (const value of [null, undefined]) {
+    const artist = Object.fromEntries(Object.keys(createEmptyArtistProfile()).map(key => [key, value]));
+    const release = Object.fromEntries(Object.keys(createEmptyRelease()).map(key => [key, value]));
+    assert.deepEqual(quickCopyGroups(artist, release), []);
+  }
+  assert.deepEqual(quickCopyGroups({}, {}), []);
+}
+
 {
   const artist = normalizeArtistProfile({
     artistName: 'bdotcom', contactEmail: 'b@x.com', instagram: '@bdotcom', primaryGenre: 'Alt-R&B'
@@ -216,6 +265,15 @@ const {
 // ---- Rights/legal values are never inferred or defaulted to yes ----
 
 {
+  const artist = { ...createEmptyArtistProfile(), shortBio: '  Bio\n\t ' };
+  const release = { ...createEmptyRelease(), lyrics: '\n  First line\nSecond line\t\n', shortPitch: ' \t\n ' };
+  const fields = quickCopyGroups(artist, release).flatMap(group => group.fields);
+  assert.equal(fields.find(field => field.key === 'shortBio').value, artist.shortBio);
+  assert.equal(fields.find(field => field.key === 'lyrics').value, release.lyrics);
+  assert.ok(!fields.some(field => field.key === 'shortPitch'), 'whitespace-only fields remain omitted');
+}
+
+{
   const blank = normalizeRelease({});
   assert.equal(blank.ownsRecordingRights, 'unknown');
   assert.equal(blank.ownsCompositionRights, 'unknown');
@@ -241,6 +299,33 @@ const {
 }
 
 // ---- Malformed stored state is normalized safely ----
+
+{
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  // Execute the real startup through release migration, before DOM initialization.
+  const startup = fs.readFileSync(require.resolve('../app.js'), 'utf8').split('const $=')[0];
+  for (const stored of ['null', 'false', '42', '"text"', '[]', '{broken', '{"songs":{},"reviewers":"bad","submissions":true}']) {
+    const context = {
+      localStorage: { getItem: () => stored },
+      LiveFinderDashboard: require('../dashboard-utils.js'),
+      LiveFinderOutreach: require('../outreach-utils.js'),
+      LiveFinderReleasePacket: require('../release-packet-utils.js')
+    };
+    const state = vm.runInNewContext(`${startup}\nstate`, context);
+    for (const key of ['songs', 'reviewers', 'submissions', 'releases']) {
+      assert.ok(Array.isArray(state[key]), `${stored}: ${key} must normalize to an array`);
+      assert.equal(state[key].length, 0);
+    }
+    assert.equal(state.currentReleaseId, null);
+    assert.equal(state.artistProfile.artistName, '');
+  }
+  for (const raw of [null, false, 42, 'text', []]) {
+    const state = migrateReleaseData(raw);
+    assert.deepEqual(state.songs, []);
+    assert.deepEqual(state.releases, []);
+  }
+}
 
 {
   const state = { songs: 'not-an-array', releases: { foo: 1 }, artistProfile: null, currentReleaseId: 42 };

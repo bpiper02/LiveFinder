@@ -1,9 +1,14 @@
 const KEY='nero-router-state-v1';
 const PAYMENT_POLICY_KEY='livefinder-payment-policy';
-const state=(()=>{try{return JSON.parse(localStorage.getItem(KEY)||'{}')}catch{return{}}})();
-state.songs ||= [];
-state.reviewers ||= [];
-state.submissions ||= [];
+const state=(()=>{
+  try{
+    const parsed=JSON.parse(localStorage.getItem(KEY)||'{}');
+    return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{};
+  }catch{return{}}
+})();
+for(const key of ['songs','reviewers','submissions']){
+  if(!Array.isArray(state[key]))state[key]=[];
+}
 
 const {
   normalizeNeroUrl,

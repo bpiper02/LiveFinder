@@ -150,14 +150,28 @@
     base.ownsRecordingRights = normalizeEnum(source.ownsRecordingRights, YES_NO_UNKNOWN, 'unknown');
     base.ownsCompositionRights = normalizeEnum(source.ownsCompositionRights, YES_NO_UNKNOWN, 'unknown');
     base.samplesCleared = normalizeEnum(source.samplesCleared, SAMPLES_CLEARED_VALUES, 'unknown');
+    // Keep conflicting legacy identities attached to their release across reloads/edits.
+    if (source.legacyArtistOverrides && typeof source.legacyArtistOverrides === 'object') {
+      base.legacyArtistOverrides = {};
+      for (const key of ['artistName', 'contactEmail', 'instagram']) {
+        if (typeof source.legacyArtistOverrides[key] === 'string') {
+          base.legacyArtistOverrides[key] = source.legacyArtistOverrides[key];
+        }
+      }
+    }
     return base;
   }
 
   // ---- Legacy adapter (id/artist/title/email/instagram/songUrl/note) ----
 
   function releaseToLegacySong(artistProfile, release) {
-    const artist = artistProfile || createEmptyArtistProfile();
     const rel = release || createEmptyRelease();
+    const artist = { ...(artistProfile || createEmptyArtistProfile()) };
+    for (const key of ['artistName', 'contactEmail', 'instagram']) {
+      if (typeof rel.legacyArtistOverrides?.[key] === 'string') {
+        artist[key] = rel.legacyArtistOverrides[key];
+      }
+    }
     return {
       id: rel.id,
       artist: trim(artist.artistName),
@@ -208,7 +222,7 @@
   }
 
   function migrateReleaseData(state) {
-    if (!state || typeof state !== 'object') return state;
+    if (!state || typeof state !== 'object' || Array.isArray(state)) state = {};
 
     state.artistProfile = normalizeArtistProfile(state.artistProfile);
 
@@ -219,7 +233,17 @@
 
     if (!hadReleases && legacySongs.length) {
       seedArtistProfileFromLegacySongs(state.artistProfile, legacySongs);
-      for (const song of legacySongs) state.releases.push(releaseFromLegacySong(song));
+      for (const song of legacySongs) {
+        const release = releaseFromLegacySong(song);
+        for (const [legacyKey, profileKey] of [['artist', 'artistName'], ['email', 'contactEmail'], ['instagram', 'instagram']]) {
+          const value = trim(song?.[legacyKey]);
+          if (value !== state.artistProfile[profileKey]) {
+            release.legacyArtistOverrides ||= {};
+            release.legacyArtistOverrides[profileKey] = value;
+          }
+        }
+        state.releases.push(release);
+      }
     }
 
     if (typeof state.currentReleaseId !== 'string' || !state.releases.some(r => r.id === state.currentReleaseId)) {
@@ -290,7 +314,7 @@
   // ---- Quick copy ----
 
   function field(key, label, value) {
-    return { key, label, value: trim(value) };
+    return { key, label, value: String(value ?? '') };
   }
 
   function quickCopyGroups(artistProfile, release) {
@@ -393,7 +417,7 @@
     ];
 
     return groups
-      .map(g => ({ group: g.group, fields: g.fields.filter(f => f.value) }))
+      .map(g => ({ group: g.group, fields: g.fields.filter(f => trim(f.value)) }))
       .filter(g => g.fields.length > 0);
   }
 
